@@ -1,15 +1,19 @@
 
 import React from 'react';
 import { X, Scroll, Trophy, Pizza, Calendar, Star, Bell } from 'lucide-react';
+import { Language, translations } from '../services/translations';
 
 interface HistoryModalProps {
   isOpen: boolean;
   onClose: () => void;
   isAdmin?: boolean;
   onAlertAdmin?: () => void;
+  language: Language;
 }
 
-export const HistoryModal: React.FC<HistoryModalProps> = ({ isOpen, onClose, isAdmin, onAlertAdmin }) => {
+export const HistoryModal: React.FC<HistoryModalProps> = ({ isOpen, onClose, isAdmin, onAlertAdmin, language }) => {
+  const t = translations[language].historyContent;
+
   if (!isOpen) return null;
 
   return (
@@ -36,8 +40,8 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({ isOpen, onClose, isA
                 <Scroll size={32} className="text-amber-600 dark:text-amber-400" />
             </div>
           </div>
-          <h2 className="text-2xl font-black text-amber-900 dark:text-amber-100 uppercase tracking-wide">Nossa História</h2>
-          <p className="text-amber-700 dark:text-amber-300 text-xs font-medium mt-1">Tradição, Sabor e Amizade</p>
+          <h2 className="text-2xl font-black text-amber-900 dark:text-amber-100 uppercase tracking-wide">{t.title}</h2>
+          <p className="text-amber-700 dark:text-amber-300 text-xs font-medium mt-1">{t.subtitle}</p>
         </div>
 
         {/* Conteúdo com scroll */}
@@ -48,43 +52,43 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({ isOpen, onClose, isA
                 onClick={onAlertAdmin}
                 className="w-full flex items-center justify-center gap-2 py-2 bg-amber-200 dark:bg-amber-800 text-amber-900 dark:text-amber-100 rounded-xl text-xs font-black uppercase tracking-tighter mb-2 hover:scale-[1.02] active:scale-95 transition-all"
               >
-                  <Bell size={14} /> Notificar Mudança na História
+                  <Bell size={14} /> {t.notify}
               </button>
           )}
 
           <div className="relative pl-4 border-l-2 border-amber-200 dark:border-amber-800/50">
              <h3 className="flex items-center gap-2 font-bold text-lg text-slate-800 dark:text-white mb-2">
-                <Pizza size={18} className="text-orange-500" /> O Início de Tudo
+                <Pizza size={18} className="text-orange-500" /> {t.sections[0].title}
              </h3>
              <p className="text-sm">
-               Tudo começou como uma pequena reunião entre amigos apaixonados por culinária. A ideia era simples: quem faz a melhor pizza caseira? O que era para ser apenas um jantar se transformou em uma competição acirrada e divertida.
+               {t.sections[0].text}
              </p>
           </div>
 
           <div className="relative pl-4 border-l-2 border-amber-200 dark:border-amber-800/50">
              <h3 className="flex items-center gap-2 font-bold text-lg text-slate-800 dark:text-white mb-2">
-                <Trophy size={18} className="text-yellow-500" /> A Evolução
+                <Trophy size={18} className="text-yellow-500" /> {t.sections[1].title}
              </h3>
              <p className="text-sm">
-               A cada edição, o nível subiu. Massas de fermentação natural, molhos secretos e combinações ousadas. O "Torneio de Pizza" deixou de ser apenas sobre comer e passou a ser sobre a arte de criar experiências.
+               {t.sections[1].text}
              </p>
           </div>
 
           <div className="relative pl-4 border-l-2 border-amber-200 dark:border-amber-800/50">
              <h3 className="flex items-center gap-2 font-bold text-lg text-slate-800 dark:text-white mb-2">
-                <Star size={18} className="text-purple-500" /> O Legado
+                <Star size={18} className="text-purple-500" /> {t.sections[2].title}
              </h3>
              <p className="text-sm">
-               Hoje, não avaliamos apenas o sabor, mas a apresentação e a criatividade. Este aplicativo serve para eternizar esses momentos, registrar nossas receitas campeãs e, acima de tudo, celebrar a amizade que nos une em volta da mesa.
+               {t.sections[2].text}
              </p>
           </div>
 
           <div className="bg-amber-50 dark:bg-amber-900/10 p-4 rounded-xl border border-amber-100 dark:border-amber-800/30 flex items-start gap-3">
              <Calendar className="text-amber-600 shrink-0 mt-0.5" size={20} />
              <div>
-                 <span className="block font-bold text-amber-800 dark:text-amber-200 text-sm">Próximos Capítulos</span>
+                 <span className="block font-bold text-amber-800 dark:text-amber-200 text-sm">{t.sections[3].title}</span>
                  <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
-                    A história continua sendo escrita a cada fatia. Prepare sua massa, aqueça o forno e faça parte dessa lenda!
+                    {t.sections[3].text}
                  </p>
              </div>
           </div>
@@ -95,7 +99,7 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({ isOpen, onClose, isA
                 onClick={onClose}
                 className="w-full bg-slate-900 dark:bg-slate-700 text-white font-bold py-3 rounded-xl hover:bg-slate-800 transition-colors"
             >
-                Fechar Livro
+                {t.close}
             </button>
         </div>
       </div>

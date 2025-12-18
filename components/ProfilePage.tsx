@@ -104,7 +104,6 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
         if (!formData.nickname.startsWith('@')) { setError(t.auth.mustStartWithAt); return; }
         setIsLoading(true);
         try {
-            // Fix: Awaited the async call to authService.updateUser to ensure a UserAccount object is returned
             const updatedUser = await authService.updateUser(currentUser.nickname, {
                 nickname: formData.nickname,
                 avatar: formData.avatar,
@@ -117,33 +116,31 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
         } catch (err) { setError((err as Error).message); } finally { setIsLoading(false); }
     };
 
-    const applyLevelReset = (user: UserAccount) => {
+    // HARD RESET: Define o offset como o total acumulado para voltar ao zero absoluto
+    const applyLevelResetHard = (user: UserAccount) => {
         const cleanNick = user.nickname.replace('@', '').trim();
-        const userStats = calculateUserLevel(user, pizzas, socialData, pizzaOwners);
-        const currentOffset = parseFloat(localStorage.getItem(`pizza_xp_offset_${cleanNick}`) || '0');
-        
-        const newOffset = currentOffset + userStats.currentBarProgress;
-        localStorage.setItem(`pizza_xp_offset_${cleanNick}`, newOffset.toString());
-        localStorage.setItem(`pizza_xp_reg_v2_${cleanNick}`, '0');
-        localStorage.setItem(`pizza_xp_bonus_v3_${cleanNick}`, '0');
+        // Recalculamos o XP sem offset para saber o valor total a anular
+        const userStats = calculateUserLevel({ ...user }, pizzas, socialData, pizzaOwners);
+        // O rawProgress contém todo o XP ganho até agora sem considerar o offset atual
+        localStorage.setItem(`pizza_xp_offset_${cleanNick}`, userStats.rawProgress.toString());
     };
 
     const handleResetUserXP = (user: UserAccount) => {
-        if (confirm(`Resetar progresso de ${user.nickname}? Ele continuará no nível ${calculateUserLevel(user, pizzas, socialData, pizzaOwners).level} mas com 0% de XP.`)) {
+        if (confirm(`ZERAR XP: Deseja realmente resetar ${user.nickname} para o Nível 1 com 0% de XP?`)) {
             broadcastResetUserXP({ targetNickname: user.nickname, resetTime: Date.now() });
-            applyLevelReset(user);
-            alert(`XP de ${user.nickname} resetado com sucesso!`);
+            applyLevelResetHard(user);
+            alert(`Perfil de ${user.nickname} zerado com sucesso!`);
             setShowResetList(false);
             if (currentUser.nickname === user.nickname) window.location.reload();
         }
     };
 
     const handleResetAllXP = () => {
-        if (confirm("ATENÇÃO: Deseja resetar o progresso de TODOS os jogadores para o início de seus respectivos níveis atuais?")) {
+        if (confirm("ATENÇÃO ADMIN: Esta ação resetará TODOS OS JOGADORES para o Nível 1 com 0% de XP. Deseja prosseguir?")) {
             const allPlayers = authService.getUsers();
             broadcastResetUserXP({ targetNickname: 'ALL', resetTime: Date.now() });
-            allPlayers.forEach(user => applyLevelReset(user));
-            alert("Progresso de todos os jogadores resetado com sucesso!");
+            allPlayers.forEach(user => applyLevelResetHard(user));
+            alert("Todos os perfis foram zerados!");
             setShowResetList(false);
             window.location.reload();
         }
@@ -166,7 +163,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                 <div className="fixed inset-0 z-[300] bg-black/60 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
                     <div className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden border border-slate-200 dark:border-slate-800 flex flex-col max-h-[85vh]">
                         <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
-                            <h3 className="font-black text-xs uppercase text-slate-500">Zerar XP do Jogador</h3>
+                            <h3 className="font-black text-xs uppercase text-slate-500">Zerar Progresso (Admin)</h3>
                             <button onClick={() => setShowResetList(false)} className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
                         </div>
 
@@ -175,9 +172,9 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                                 onClick={handleResetAllXP}
                                 className="w-full bg-red-600 hover:bg-red-700 text-white font-black py-3 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-red-500/20 transition-all active:scale-95 text-xs uppercase tracking-widest"
                             >
-                                <RefreshCcw size={16} /> Resetar Todos (0% XP)
+                                <RefreshCcw size={16} /> Zerar XP de Todos
                             </button>
-                            <p className="text-[9px] text-red-500 dark:text-red-400 font-bold mt-2 text-center uppercase tracking-tighter">Os jogadores manterão seus níveis atuais</p>
+                            <p className="text-[9px] text-red-500 dark:text-red-400 font-bold mt-2 text-center uppercase tracking-tighter">Todos voltarão ao Nível 1 com 0%</p>
                         </div>
 
                         <div className="p-3 border-b border-slate-100 dark:border-slate-800">
@@ -201,31 +198,10 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
 
             <div className="w-full max-w-md p-6 relative z-10 flex flex-col h-full md:h-auto justify-center">
                 <div className="relative overflow-hidden rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl">
-                    {/* Header com Foto de Capa */}
                     <div className={`h-32 relative overflow-hidden group ${!formData.cover ? (isAdmin ? 'bg-gradient-to-br from-slate-700 via-slate-800 to-black' : 'bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500') : ''}`}>
-                        {formData.cover ? (
-                            <img src={formData.cover} className="w-full h-full object-cover" alt="Cover" />
-                        ) : (
-                            <div className="absolute top-0 left-0 w-full h-full opacity-20" style={{ backgroundImage: 'radial-gradient(circle, #fff 10%, transparent 10%)', backgroundSize: '20px 20px' }}></div>
-                        )}
-                        
-                        {isEditing && (
-                            <button 
-                                onClick={() => coverInputRef.current?.click()} 
-                                className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white gap-1 z-20"
-                            >
-                                <ImageIcon size={24} />
-                                <span className="text-[10px] font-black uppercase tracking-widest">Alterar Capa</span>
-                            </button>
-                        )}
-
-                        {isAdmin && (
-                            <div className="absolute top-4 left-6 flex items-center gap-3 z-10">
-                                <div className="text-white/30"><ShieldCheck size={48} /></div>
-                                <button onClick={() => setShowResetList(true)} className="bg-red-600 hover:bg-red-700 text-white text-[9px] font-black uppercase px-3 py-1 rounded-full shadow-lg transition-all active:scale-90 border border-red-400/30">APAGAR</button>
-                            </div>
-                        )}
-                        
+                        {formData.cover ? <img src={formData.cover} className="w-full h-full object-cover" alt="Cover" /> : <div className="absolute top-0 left-0 w-full h-full opacity-20" style={{ backgroundImage: 'radial-gradient(circle, #fff 10%, transparent 10%)', backgroundSize: '20px 20px' }}></div>}
+                        {isEditing && <button onClick={() => coverInputRef.current?.click()} className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white gap-1 z-20"><ImageIcon size={24} /><span className="text-[10px] font-black uppercase tracking-widest">Alterar Capa</span></button>}
+                        {isAdmin && <div className="absolute top-4 left-6 flex items-center gap-3 z-10"><div className="text-white/30"><ShieldCheck size={48} /></div><button onClick={() => setShowResetList(true)} className="bg-red-600 hover:bg-red-700 text-white text-[9px] font-black uppercase px-3 py-1 rounded-full shadow-lg transition-all active:scale-90 border border-red-400/30">APAGAR</button></div>}
                         <input type="file" ref={coverInputRef} className="hidden" accept="image/*" onChange={(e) => handleFileChange(e, 'cover')} />
                     </div>
 
@@ -254,11 +230,11 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                             </div>
                             <div className="bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-2xl border border-slate-100 dark:border-slate-800 flex flex-col items-center justify-center text-center">
                                 <span className="text-2xl font-black text-red-500 dark:text-red-400 leading-none mb-1">{stats.likesGiven}</span>
-                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-tight">Curtida</span>
+                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-tight">Likes</span>
                             </div>
                             <div className="bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-2xl border border-slate-100 dark:border-slate-800 flex flex-col items-center justify-center text-center">
                                 <span className="text-2xl font-black text-blue-500 dark:text-blue-400 leading-none mb-1">{stats.commentsGiven}</span>
-                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-tight">Comentário</span>
+                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-tight">Posts</span>
                             </div>
                         </div>
 
@@ -266,21 +242,12 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                             <div className="flex justify-between text-xs font-bold text-slate-400 mb-2 items-center">
                                 <span className="flex items-center gap-2">
                                     {stats.level === 5 ? 'Nível Máximo LENDÁRIO' : `Progresso Nível ${stats.level}`}
-                                    <button 
-                                        onClick={() => setShowGamiHelp(true)}
-                                        className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-full px-2.5 py-1 flex items-center gap-1.5 shadow-lg shadow-indigo-500/20 transition-all active:scale-90 animate-pulse ring-2 ring-white dark:ring-slate-800"
-                                        title="O que são estes pontos?"
-                                    >
-                                        <span className="font-black text-[10px]">?</span>
-                                        <span className="text-[9px] font-black uppercase tracking-tighter">Ajuda</span>
-                                    </button>
+                                    <button onClick={() => setShowGamiHelp(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-full px-2.5 py-1 flex items-center gap-1.5 shadow-lg shadow-indigo-500/20 transition-all active:scale-90 animate-pulse ring-2 ring-white dark:ring-slate-800"><span className="font-black text-[10px]">?</span><span className="text-[9px] font-black uppercase tracking-tighter">Ajuda</span></button>
                                 </span>
                                 <span>{stats.currentBarProgress.toFixed(1)}%</span>
                             </div>
                             <div className="w-full h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mb-2 shadow-inner"><div className="h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 transition-all duration-1000 ease-out" style={{ width: `${stats.currentBarProgress}%` }}></div></div>
-                            <span className="text-sm font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest bg-indigo-50 dark:bg-indigo-900/30 px-3 py-1 rounded-full border border-indigo-100 dark:border-indigo-800">
-                                {getLevelTitle(stats.level)}
-                            </span>
+                            <span className="text-sm font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest bg-indigo-50 dark:bg-indigo-900/30 px-3 py-1 rounded-full border border-indigo-100 dark:border-indigo-800">{getLevelTitle(stats.level)}</span>
                             {renderLevelArrows(stats.level)}
                         </div>
 

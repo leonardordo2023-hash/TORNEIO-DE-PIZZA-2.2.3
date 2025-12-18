@@ -28,7 +28,7 @@ export const DynamicsPage: React.FC<DynamicsPageProps> = ({ language, isAdmin, o
                             onClick={onAlertAdmin}
                             className="inline-flex items-center gap-2 px-6 py-2 bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded-full text-[10px] font-black uppercase tracking-widest hover:scale-105 active:scale-95 transition-all border border-indigo-200 dark:border-indigo-800 shadow-sm"
                         >
-                            <Bell size={12} /> Notificar Jogadores
+                            <Bell size={12} /> {t.notifyPlayers}
                         </button>
                     </div>
                 )}
@@ -43,9 +43,7 @@ export const DynamicsPage: React.FC<DynamicsPageProps> = ({ language, isAdmin, o
                         </div>
                         <div>
                             <h3 className="text-xl font-black text-slate-800 dark:text-white mb-2">{t.pizzaPointsTitle}</h3>
-                            <p className="text-slate-600 dark:text-slate-300 text-sm font-medium leading-relaxed">
-                                Cada <b>1.0 ponto</b> de nota recebida (Beleza ou Sabor) nas suas pizzas aumenta sua barra em exatamente <b>1.0% de XP</b>.
-                            </p>
+                            <div className="text-slate-600 dark:text-slate-300 text-sm font-medium leading-relaxed" dangerouslySetInnerHTML={{ __html: t.pizzaPointsDesc }} />
                         </div>
                     </div>
                 </div>
@@ -58,14 +56,12 @@ export const DynamicsPage: React.FC<DynamicsPageProps> = ({ language, isAdmin, o
                         </div>
                         <div>
                             <h3 className="text-xl font-black text-slate-800 dark:text-white mb-2">{t.extraBonusTitle}</h3>
-                            <p className="text-slate-600 dark:text-slate-300 text-sm font-medium leading-relaxed">
-                                Valorize o trabalho artesanal! Ganhe a Estrela Amarela ao fazer sua própria massa e receba instantaneamente <b>8.5% de XP</b>.
-                            </p>
+                            <div className="text-slate-600 dark:text-slate-300 text-sm font-medium leading-relaxed" dangerouslySetInnerHTML={{ __html: t.extraBonusDesc }} />
                         </div>
                     </div>
                 </div>
 
-                {/* 3. REGRAS SOCIAIS (DESTAQUE E ANIMAÇÃO) */}
+                {/* 3. REGRAS SOCIAIS */}
                 <div className="rounded-3xl p-6 border-2 border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 dark:border-indigo-800 shadow-xl relative overflow-hidden group hover:scale-[1.01] transition-transform">
                     <div className="absolute top-0 right-0 p-8 opacity-10 animate-float">
                         <Sparkles size={60} className="text-indigo-600" />
@@ -75,24 +71,12 @@ export const DynamicsPage: React.FC<DynamicsPageProps> = ({ language, isAdmin, o
                             <div className="p-3 bg-indigo-600 rounded-xl text-white shadow-lg">
                                 <Heart size={24} className="fill-white animate-pulse" />
                             </div>
-                            <h3 className="text-2xl font-black text-indigo-800 dark:text-indigo-300 uppercase tracking-tighter">Engajamento Social</h3>
+                            <h3 className="text-2xl font-black text-indigo-800 dark:text-indigo-300 uppercase tracking-tighter">{t.socialPointsTitle}</h3>
                         </div>
                         
                         <div className="space-y-4">
-                            <div className="flex items-start gap-3 bg-white/60 dark:bg-slate-800/60 p-4 rounded-2xl border border-indigo-100 dark:border-indigo-900 animate-in slide-in-from-right duration-500 delay-150">
-                                <Heart size={20} className="text-red-500 fill-red-500 mt-1" />
-                                <p className="text-sm text-slate-700 dark:text-slate-200 font-medium">
-                                    <b>CURTIDAS:</b> Cada <span className="text-red-600 font-black">LIKE</span> em fotos, notícias, avisos ou nos comentários concede <span className="bg-red-100 dark:bg-red-900/40 px-1.5 rounded text-red-700 font-black">2.5% de XP</span> e <span className="font-black text-slate-900 dark:text-white underline">1 Ponto</span> no perfil!
-                                </p>
-                            </div>
-
-                            <div className="flex items-start gap-3 bg-white/60 dark:bg-slate-800/60 p-4 rounded-2xl border border-indigo-100 dark:border-indigo-900 animate-in slide-in-from-right duration-500 delay-300">
-                                <MessageCircle size={20} className="text-blue-500 fill-blue-500 mt-1" />
-                                <p className="text-sm text-slate-700 dark:text-slate-200 font-medium">
-                                    <b>COMENTÁRIOS:</b> Ganhe <span className="text-blue-600 font-black">2.5% de XP</span> e <span className="font-black text-slate-900 dark:text-white underline">1 Ponto</span>! <br/>
-                                    <span className="text-[10px] uppercase font-black text-orange-600 block mt-1">⚠️ Regra:</span>
-                                    Ganha apenas no <span className="underline font-black">primeiro comentário em cada postagem</span>. Comentários extras no mesmo post não dão pontos.
-                                </p>
+                            <div className="bg-white/60 dark:bg-slate-800/60 p-4 rounded-2xl border border-indigo-100 dark:border-indigo-900">
+                                <div className="text-sm text-slate-700 dark:text-slate-200 font-medium leading-relaxed" dangerouslySetInnerHTML={{ __html: t.socialPointsDesc }} />
                             </div>
                         </div>
                     </div>

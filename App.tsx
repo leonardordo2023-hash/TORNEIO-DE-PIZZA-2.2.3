@@ -29,7 +29,7 @@ import {
     broadcastReply, broadcastReplyReaction, broadcastPollVote, forceManualSync, broadcastConfirmVote,
     broadcastAppNotification, broadcastPresence, VotePayload, ConfirmVotePayload, GlobalNotePayload, FullSyncPayload, AddPizzaPayload, MediaPayload, MediaUpdatePayload, MediaDeletePayload, DatePayload, CommentPayload, CommentEditPayload, CommentDeletePayload, ReactionPayload, CommentReactionPayload, ReplyPayload, ReplyReactionPayload, PollVotePayload, AppNotificationPayload, PresencePayload, ResetXPPayload
 } from './services/p2pService';
-import { Trophy, Plus, RotateCcw, Table, User, ArrowUpDown, ArrowUp, ArrowDown, Bell, Loader2, LogOut, Settings as SettingsIcon, ScrollText, BookOpen, Database, RefreshCw, MessageCircle, Newspaper, ImageIcon, Calendar, BarChart2, Grid, Gamepad2, X, Pizza, Cake, Check, Clock, Leaf, Sparkles, Wifi, WifiOff, Users, HelpCircle, Megaphone, Play, AlertTriangle, CloudOff } from 'lucide-react';
+import { Trophy, Plus, RotateCcw, Table, User, ArrowUpDown, ArrowUp, ArrowDown, Bell, Loader2, LogOut, Settings as SettingsIcon, ScrollText, BookOpen, Database, RefreshCw, MessageCircle, Newspaper, ImageIcon, Calendar, BarChart2, Grid, Gamepad2, X, Pizza, Cake, Check, Clock, Leaf, Sparkles, Wifi, WifiOff, Users, HelpCircle, Megaphone, Play, AlertTriangle, CloudOff, Lock, Unlock, Eraser } from 'lucide-react';
 import { LOGO_BASE64 } from './constants';
 
 const INITIAL_PI_IDS = [7, 8, 9, 10, 13, 14, 16, 21, 22, 28, 39, 42, 50];
@@ -39,8 +39,6 @@ const PIZZA_OWNERS: Record<number, string> = {
     50: "Rebecca", 28: "Ana Júlia", 21: "Adry", 8: "Yulimar", 42: "Gecilda",
     10: "Vanusa", 22: "Leonardo"
 };
-
-const DM_AVATAR_URL = 'https://ui-avatars.com/api/?name=DM&background=000&color=fff&size=128&bold=true&length=2';
 
 export interface AppNotification {
     id: string; title: string; message: string; timestamp: number; read: boolean;
@@ -76,6 +74,7 @@ const App: React.FC = () => {
   const [peerCount, setPeerCount] = useState<number>(1);
   const [onlineNicknames, setOnlineNicknames] = useState<Record<string, {nickname: string, lastSeen: number}>>({});
   const [cloudReady, setCloudReady] = useState(true);
+  const [isVotingReleased, setIsVotingReleased] = useState(false);
 
   const [isNavVisible, setIsNavVisible] = useState(true);
   const lastScrollY = useRef(0);
@@ -188,7 +187,7 @@ const App: React.FC = () => {
     localStorage.setItem('pizza_theme', theme);
   }, [theme]);
 
-  useEffect(() => { localStorage.setItem('pizza_theme_color', themeColor); }, [themeColor]);
+  useEffect(() => { localStorage.setItem('pizza_theme_color', themeColor); localStorage.setItem('pizza_language', language); }, [themeColor, language]);
 
   const [socialData, setSocialData] = useState<SocialData>(() => {
     try {
@@ -242,9 +241,11 @@ const App: React.FC = () => {
         
         const cloudPizzas = await databaseService.getBackup('pizzas');
         const cloudSocial = await databaseService.getBackup('social_data');
+        const votingState = await databaseService.getFromCloud('voting_released');
         
         if (cloudPizzas) setPizzas(cloudPizzas);
         if (cloudSocial) setSocialData(cloudSocial);
+        if (votingState !== null) setIsVotingReleased(!!votingState);
         
         setIsDbReady(true);
         isSyncingRef.current = false;
@@ -259,26 +260,20 @@ const App: React.FC = () => {
                 triggerSystemNotification(p.title, cleanMsg);
             })
             .on('broadcast', { event: 'full_sync' }, (payload) => {
-                const { pizzas: incoming, socialData: incomingSocial } = payload.payload;
+                const { pizzas: incoming, socialData: incomingSocial, votingReleased: incomingVR } = payload.payload;
                 isSyncingRef.current = true;
                 setPizzas(incoming);
                 setSocialData(incomingSocial);
+                if (incomingVR !== undefined) setIsVotingReleased(!!incomingVR);
                 setTimeout(() => { isSyncingRef.current = false; }, 500);
             })
             .subscribe();
 
-        // P2P Initialization
         initializeP2P({
             onVoteUpdate: (p) => setPizzas(prev => prev.map(pz => pz.id === p.pizzaId ? { ...pz, [p.field]: p.value === -1 ? (()=>{const s={...pz[p.field]};delete s[p.userId];return s})() : { ...pz[p.field], [p.userId]: p.value } } : pz)),
-            onVoteConfirm: (p) => setPizzas(prev => prev.map(pz => pz.id === p.pizzaId ? { ...pz, confirmedVotes: { ...pz.confirmedVotes, [p.userId]: p.status } } : pz)),
+            onVoteConfirm: (p) => setPizzas(prev => prev.map(pz => pz.id === p.pizzaId ? { ...pz, confirmedVotes: { ...pz.confirmedVotes, [p.userId]: true } } : pz)),
             onGlobalNoteUpdate: (p) => setPizzas(prev => prev.map(pz => pz.id === p.pizzaId ? { ...pz, notes: p.note } : pz)),
-            onFullSync: (p) => { 
-                isSyncingRef.current = true; 
-                setPizzas(p.pizzas); 
-                setSocialData(p.socialData); 
-                if(p.users) authService.mergeUsers(p.users);
-                setTimeout(() => isSyncingRef.current = false, 1000); 
-            },
+            onFullSync: (p) => { isSyncingRef.current = true; setPizzas(p.pizzas); setSocialData(p.socialData); if(p.users) authService.mergeUsers(p.users); setTimeout(() => isSyncingRef.current = false, 1000); },
             onPeerCountChange: setPeerCount,
             onReset: () => window.location.reload(),
             onDelete: (id) => setPizzas(prev => prev.filter(p => p.id !== id)),
@@ -290,14 +285,16 @@ const App: React.FC = () => {
             onCommentAdd: (p) => setSocialData(prev => ({ ...prev, comments: { ...prev.comments, [p.mediaId]: [...(prev.comments[p.mediaId] || []), p.comment] } })),
             onCommentEdit: (p) => setSocialData(prev => ({ ...prev, comments: { ...prev.comments, [p.mediaId]: (prev.comments[p.mediaId] || []).map(c => c.id === p.commentId ? { ...c, text: p.newText } : c) } })),
             onCommentDelete: (p) => setSocialData(prev => ({ ...prev, comments: { ...prev.comments, [p.mediaId]: (prev.comments[p.mediaId] || []).filter(c => c.id !== p.commentId) } })),
-            onReactionUpdate: (p) => setSocialData(prev => {
-                const curr = prev.likes[p.mediaId] || {};
-                return { ...prev, likes: { ...prev.likes, [p.mediaId]: { ...curr, [p.userId]: p.emoji } } };
-            }),
+            onReactionUpdate: (p) => setSocialData(prev => { const curr = prev.likes[p.mediaId] || {}; return { ...prev, likes: { ...prev.likes, [p.mediaId]: { ...curr, [p.userId]: p.emoji } } }; }),
             onCommentReactionUpdate: (p) => setSocialData(prev => ({ ...prev, comments: { ...prev.comments, [p.mediaId]: (prev.comments[p.mediaId] || []).map(c => c.id === p.commentId ? { ...c, reactions: { ...c.reactions, [p.userId]: p.emoji } } : c) } })),
             onReplyAdd: (p) => setSocialData(prev => ({ ...prev, comments: { ...prev.comments, [p.mediaId]: (prev.comments[p.mediaId] || []).map(c => c.id === p.commentId ? { ...c, replies: [...(c.replies || []), p.reply] } : c) } })),
             onReplyReactionUpdate: (p) => setSocialData(prev => ({ ...prev, comments: { ...prev.comments, [p.mediaId]: (prev.comments[p.mediaId] || []).map(c => c.id === p.commentId ? { ...c, replies: (c.replies || []).map(r => r.id === p.replyId ? { ...r, reactions: { ...r.reactions, [p.userId]: p.emoji } } : r) } : c) } })),
             onPollVoteUpdate: (p) => setPizzas(prev => prev.map(pz => pz.id === p.pizzaId ? { ...pz, media: pz.media?.map(m => m.id === p.mediaId ? { ...m, poll: { ...m.poll!, votes: { ...m.poll!.votes, [p.userId]: p.selectedOptions } } } : m) } : pz)),
+            onResetUserXP: (p) => {
+                if (p.targetNickname === 'ALL' || p.targetNickname === currentUserRef.current?.nickname) {
+                    window.location.reload();
+                }
+            },
             onAppNotification: (p) => {
                 const cleanMsg = p.message.replace(/\*\*/g, '');
                 addAppNotification(p.title, p.message, p.targetTab as any);
@@ -334,11 +331,7 @@ const App: React.FC = () => {
     if (isDbReady && !isSyncingRef.current) {
         debouncedCloudSave('social_data', socialData);
         databaseService.saveBackup('social_data', socialData);
-        try {
-            localStorage.setItem('pizza_social_data', JSON.stringify(securityService.deepClean(socialData)));
-        } catch (e) {
-            console.warn("Quota exceeded for social data in localStorage");
-        }
+        try { localStorage.setItem('pizza_social_data', JSON.stringify(securityService.deepClean(socialData))); } catch (e) {}
     }
   }, [socialData, isDbReady]);
 
@@ -364,19 +357,7 @@ const App: React.FC = () => {
     if (isDbReady && !isSyncingRef.current) {
         debouncedCloudSave('pizzas', pizzas);
         databaseService.saveBackup('pizzas', pizzas);
-        
-        try {
-            localStorage.setItem('pizzaGradeDataV2', JSON.stringify(securityService.deepClean(pizzas)));
-        } catch (e) {
-            console.warn("Local storage quota exceeded, falling back to IndexedDB for pizzas.");
-            const stripped = pizzas.map(p => ({
-                ...p,
-                media: p.media?.map(m => ({ ...m, url: "" }))
-            }));
-            try {
-                localStorage.setItem('pizzaGradeDataV2', JSON.stringify(securityService.deepClean(stripped)));
-            } catch (e2) {}
-        }
+        try { localStorage.setItem('pizzaGradeDataV2', JSON.stringify(securityService.deepClean(pizzas))); } catch (e) {}
     }
   }, [pizzas, isDbReady]);
 
@@ -395,9 +376,7 @@ const App: React.FC = () => {
           setActiveTab(tabId as any); setPreviewTab(null);
           if (tabId === 'grid_salgada') setGridMode('salgada');
           if (tabId === 'grid_doce') setGridMode('doce');
-      } else {
-          setPreviewTab(tabId); setTimeout(() => setPreviewTab(p => p === tabId ? null : p), 2500);
-      }
+      } else { setPreviewTab(tabId); setTimeout(() => setPreviewTab(p => p === tabId ? null : p), 2500); }
   };
 
   const sortedGridPizzas = useMemo(() => {
@@ -419,15 +398,13 @@ const App: React.FC = () => {
     return map;
   }, [pizzas, gridMode]);
 
-  const syncAndBroadcast = (updatedPizzas: PizzaData[], updatedSocial?: SocialData) => {
+  const syncAndBroadcast = (updatedPizzas: PizzaData[], updatedSocial?: SocialData, updatedVR?: boolean) => {
       setPizzas(updatedPizzas);
       if (updatedSocial) setSocialData(updatedSocial);
-      
-      supabase.channel('app_global_sync').send({
-          type: 'broadcast',
-          event: 'full_sync',
-          payload: { pizzas: updatedPizzas, socialData: updatedSocial || socialData }
-      });
+      if (updatedVR !== undefined) { setIsVotingReleased(updatedVR); databaseService.saveToCloud('voting_released', updatedVR); }
+      supabase.channel('app_global_sync').send({ type: 'broadcast', event: 'full_sync', payload: { pizzas: updatedPizzas, socialData: updatedSocial || socialData, votingReleased: updatedVR !== undefined ? updatedVR : isVotingReleased } });
+      databaseService.saveBackup('pizzas', updatedPizzas);
+      if (updatedSocial) databaseService.saveBackup('social_data', updatedSocial);
   };
 
   const handleUpdateScore = (id: any, field: any, value: any) => { 
@@ -452,25 +429,12 @@ const App: React.FC = () => {
   const handleAddMedia = (id: any, item: MediaItem) => { 
     const updated = pizzas.map(p => p.id === id ? { ...p, media: [...(p.media || []), item] } : p);
     syncAndBroadcast(updated);
-    
     if(isDbReady) databaseService.archiveMedia(item.id, item.url, item.type); 
     broadcastMedia({ pizzaId: id, mediaItem: item }); 
-
     const section = item.hiddenFromFeed ? 'album' : (item.type === 'poll' ? 'avisos' : 'news');
     const notifId = Math.random().toString(36).substring(2, 9);
-    const payload = { 
-        id: notifId,
-        title: item.type === 'poll' ? 'Novo Aviso ⚠️' : 'Nova Notícia 🍕', 
-        message: item.caption || 'Confira o novo conteúdo postado!', 
-        targetTab: section 
-    };
-
-    supabase.channel('app_global_sync').send({
-        type: 'broadcast',
-        event: 'notification',
-        payload
-    });
-    
+    const payload = { id: notifId, title: item.type === 'poll' ? 'Novo Aviso ⚠️' : 'Nova Notícia 🍕', message: item.caption || 'Confira o novo conteúdo postado!', targetTab: section };
+    supabase.channel('app_global_sync').send({ type: 'broadcast', event: 'notification', payload });
     broadcastAppNotification(payload as any);
     addAppNotification(payload.title, payload.message, section as any, notifId);
   };
@@ -507,128 +471,107 @@ const App: React.FC = () => {
       broadcastPollVote({ pizzaId: pId, mediaId: mId, userId, selectedOptions: opts }); 
   };
 
-  const handleUpdateDate = (id: number | string, date: string) => {
-    const updated = pizzas.map(p => p.id === id ? { ...p, scheduledDate: date } : p);
-    syncAndBroadcast(updated);
-    broadcastDate({ pizzaId: id, date });
+  const handleUpdateDate = (id: number | string, date: string) => { const updated = pizzas.map(p => p.id === id ? { ...p, scheduledDate: date } : p); syncAndBroadcast(updated); broadcastDate({ pizzaId: id, date }); };
+  const handleDeletePizza = (id: number | string) => { if (window.confirm(t.deleteConfirm)) { const updated = pizzas.filter(p => p.id !== id); syncAndBroadcast(updated); broadcastDelete(id); } };
+  const handleEditComment = (mediaId: string, commentId: string, newText: string) => { const updatedComments = (socialData.comments[mediaId] || []).map(c => c.id === commentId ? { ...c, text: newText } : c); const updatedSocial = { ...socialData, comments: { ...socialData.comments, [mediaId]: updatedComments } }; syncAndBroadcast(pizzas, updatedSocial); broadcastCommentEdit({ mediaId, commentId, newText }); };
+  const handleDeleteComment = (mediaId: string, commentId: string) => { const updatedComments = (socialData.comments[mediaId] || []).filter(c => c.id !== commentId); const updatedSocial = { ...socialData, comments: { ...socialData.comments, [mediaId]: updatedComments } }; syncAndBroadcast(pizzas, updatedSocial); broadcastCommentDelete({ mediaId, commentId }); };
+  const handleCommentReaction = (mediaId: string, commentId: string, emoji: string) => { const updatedComments = (socialData.comments[mediaId] || []).map(c => { if (c.id === commentId) { const curr = c.reactions || {}; return { ...c, reactions: { ...curr, [userId]: curr[userId] === emoji ? undefined : emoji } as any }; } return c; }); const updatedSocial = { ...socialData, comments: { ...socialData.comments, [mediaId]: updatedComments } }; syncAndBroadcast(pizzas, updatedSocial); broadcastCommentReaction({ mediaId, commentId, userId, emoji }); };
+  const handleReplyToComment = (mediaId: string, commentId: string, text: string) => { const r: Reply = { id: Math.random().toString(36).substring(2, 9), user: currentUser?.nickname || 'Juiz', text, date: new Date().toISOString(), reactions: {} }; const updatedComments = (socialData.comments[mediaId] || []).map(c => c.id === commentId ? { ...c, replies: [...(c.replies || []), r] } : c); const updatedSocial = { ...socialData, comments: { ...socialData.comments, [mediaId]: updatedComments } }; syncAndBroadcast(pizzas, updatedSocial); broadcastReply({ mediaId, commentId, reply: r }); };
+  const handleReplyReaction = (mediaId: string, commentId: string, replyId: string, emoji: string) => { const updatedComments = (socialData.comments[mediaId] || []).map(c => { if (c.id === commentId) { const updatedReplies = (c.replies || []).map(r => { if (r.id === replyId) { const curr = r.reactions || {}; return { ...r, reactions: { ...curr, [userId]: curr[userId] === emoji ? undefined : emoji } as any }; } return r; }); return { ...c, replies: updatedReplies }; } return c; }); const updatedSocial = { ...socialData, comments: { ...socialData.comments, [mediaId]: updatedComments } }; syncAndBroadcast(pizzas, updatedSocial); broadcastReplyReaction({ mediaId, commentId, replyId, userId, emoji }); };
+
+  const handleToggleVoting = () => {
+      const newState = !isVotingReleased;
+      syncAndBroadcast(pizzas, socialData, newState);
+      const payload = { id: Math.random().toString(36).substring(2, 9), title: newState ? 'Votação Aberta! 🍕' : 'Votação Encerrada', message: newState ? 'As fichas de votação já estão disponíveis para todos!' : 'O período de votação terminou.', targetTab: newState ? 'grid_salgada' : 'news' };
+      supabase.channel('app_global_sync').send({ type: 'broadcast', event: 'notification', payload });
+      broadcastAppNotification(payload as any);
+      addAppNotification(payload.title, payload.message, payload.targetTab as any);
   };
 
-  const handleDeletePizza = (id: number | string) => {
-    if (window.confirm(t.deleteConfirm)) {
-        const updated = pizzas.filter(p => p.id !== id);
-        syncAndBroadcast(updated);
-        broadcastDelete(id);
-    }
+  const handleClearScores = () => {
+      const categoryName = gridMode === 'salgada' ? 'Salgada' : 'Doce';
+      if (!window.confirm(`ATENÇÃO ADMIN: Deseja limpar todas as notas e bônus da categoria ${categoryName}? \n\nIsso permite uma nova rodada de votos. O XP e Perfil dos jogadores NÃO serão afetados.`)) return;
+      const updated = pizzas.map(p => { const newP = { ...p }; if (gridMode === 'salgada') { newP.beautyScores = {}; newP.tasteScores = {}; newP.bonusScores = {}; } else { newP.beautyScoresDoce = {}; newP.tasteScoresDoce = {}; newP.bonusScoresDoce = {}; } newP.confirmedVotes = {}; return newP; });
+      syncAndBroadcast(updated);
+      setToastMessage(`Fichas ${categoryName} limpas com sucesso!`);
+      setTimeout(() => setToastMessage(null), 3000);
   };
 
-  const handleEditComment = (mediaId: string, commentId: string, newText: string) => {
-    const updatedComments = (socialData.comments[mediaId] || []).map(c => 
-      c.id === commentId ? { ...c, text: newText } : c
-    );
-    const updatedSocial = { ...socialData, comments: { ...socialData.comments, [mediaId]: updatedComments } };
-    syncAndBroadcast(pizzas, updatedSocial);
-    broadcastCommentEdit({ mediaId, commentId, newText });
-  };
-
-  const handleDeleteComment = (mediaId: string, commentId: string) => {
-    const updatedComments = (socialData.comments[mediaId] || []).filter(c => c.id !== commentId);
-    const updatedSocial = { ...socialData, comments: { ...socialData.comments, [mediaId]: updatedComments } };
-    syncAndBroadcast(pizzas, updatedSocial);
-    broadcastCommentDelete({ mediaId, commentId });
-  };
-
-  const handleCommentReaction = (mediaId: string, commentId: string, emoji: string) => {
-    const updatedComments = (socialData.comments[mediaId] || []).map(c => {
-      if (c.id === commentId) {
-        const curr = c.reactions || {};
-        return { ...c, reactions: { ...curr, [userId]: curr[userId] === emoji ? undefined : emoji } as any };
+  const handleRevealComplete = (winnerData?: { id: string | number, score: number }) => {
+      setTriggerRankReveal(false);
+      if (winnerData && isAdmin) {
+          const announcement: MediaItem = { id: "leader-notif-" + Date.now(), url: "", type: "news" as any, category: "pizza", date: Date.now(), caption: `🏆 LÍDER ATUAL\n🍕 Pizza #${winnerData.id}\n⭐ ${winnerData.score.toFixed(1)} pts`, hiddenFromFeed: false };
+          handleAddMedia(pizzas[0].id, announcement);
       }
-      return c;
-    });
-    const updatedSocial = { ...socialData, comments: { ...socialData.comments, [mediaId]: updatedComments } };
-    syncAndBroadcast(pizzas, updatedSocial);
-    broadcastCommentReaction({ mediaId, commentId, userId, emoji });
   };
 
-  const handleReplyToComment = (mediaId: string, commentId: string, text: string) => {
-    const r: Reply = { id: Math.random().toString(36).substring(2, 9), user: currentUser?.nickname || 'Juiz', text, date: new Date().toISOString(), reactions: {} };
-    const updatedComments = (socialData.comments[mediaId] || []).map(c => 
-      c.id === commentId ? { ...c, replies: [...(c.replies || []), r] } : c
-    );
-    const updatedSocial = { ...socialData, comments: { ...socialData.comments, [mediaId]: updatedComments } };
-    syncAndBroadcast(pizzas, updatedSocial);
-    broadcastReply({ mediaId, commentId, reply: r });
-  };
-
-  const handleReplyReaction = (mediaId: string, commentId: string, replyId: string, emoji: string) => {
-    const updatedComments = (socialData.comments[mediaId] || []).map(c => {
-      if (c.id === commentId) {
-        const updatedReplies = (c.replies || []).map(r => {
-          if (r.id === replyId) {
-            const curr = r.reactions || {};
-            return { ...r, reactions: { ...curr, [userId]: curr[userId] === emoji ? undefined : emoji } as any };
-          }
-          return r;
-        });
-        return { ...c, replies: updatedReplies };
-      }
-      return c;
-    });
-    const updatedSocial = { ...socialData, comments: { ...socialData.comments, [mediaId]: updatedComments } };
-    syncAndBroadcast(pizzas, updatedSocial);
-    broadcastReplyReaction({ mediaId, commentId, replyId, userId, emoji });
-  };
-
-  const visibleTabs: Array<'news' | 'avisos' | 'grid_salgada' | 'grid_doce' | 'charts' | 'rules' | 'dynamics' | 'album' | 'calendar' | 'history'> = [
-    'news', 'avisos', 'grid_salgada', 'grid_doce', 'charts', 'rules', 'dynamics', 'album', 'calendar', 'history'
-  ];
+  const visibleTabs = useMemo(() => {
+    const tabs: Array<'news' | 'avisos' | 'grid_salgada' | 'grid_doce' | 'charts' | 'rules' | 'dynamics' | 'album' | 'calendar' | 'history'> = ['news', 'avisos', 'charts', 'rules', 'dynamics', 'album', 'calendar', 'history'];
+    if (isAdmin || isVotingReleased) tabs.splice(2, 0, 'grid_salgada', 'grid_doce');
+    return tabs;
+  }, [isAdmin, isVotingReleased]);
 
   const handleBroadcastAlert = (section: string) => {
-      const titles: Record<string, string> = { 'rules': 'Regras Atualizadas', 'dynamics': 'Dinâmica', 'history': 'História', 'news': 'Notícias', 'avisos': 'Novos Avisos' };
+      const titles: Record<string, string> = { 'rules': t.rules, 'dynamics': t.dynamics, 'history': t.history, 'news': t.news, 'avisos': t.avisos };
       const notifId = Math.random().toString(36).substring(2, 9);
       const payload = { id: notifId, title: titles[section] || 'Aviso', message: `Atualização em **${section}**!`, targetTab: section };
-      
-      supabase.channel('app_global_sync').send({
-          type: 'broadcast',
-          event: 'notification',
-          payload
-      });
-
+      supabase.channel('app_global_sync').send({ type: 'broadcast', event: 'notification', payload });
       broadcastAppNotification(payload as any); 
       addAppNotification(payload.title, payload.message, section as any, notifId);
   };
 
-  if (showAbertura) return <AberturaPage onFinish={() => setShowAbertura(false)} />;
+  if (showAbertura) return <AberturaPage onFinish={() => setShowAbertura(false)} language={language} />;
   if (!currentUser) return <AuthPage onLoginSuccess={handleLoginSuccess} language={language} setLanguage={setLanguage} notifications={notifications} onlineNicknames={Object.values(onlineNicknames).map((v: any) => v.nickname)} />;
 
   return (
     <div className={`min-h-screen pb-32 relative transition-all duration-700 ${themeColor === 'babyBlue' ? 'theme-baby-blue-animate' : themeColor === 'pink' ? 'theme-pink-animate' : themeColor === 'lightPurple' ? 'theme-purple-animate' : themeColor === 'babyGreen' ? 'theme-green-animate' : 'bg-slate-50 dark:bg-slate-950'} overflow-hidden`}>
       {toastMessage && !showSettingsModal && <ToastNotification message={toastMessage} onClose={() => setToastMessage(null)} />}
       
-      {isAdmin && !cloudReady && (
-          <div className="bg-orange-500 text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center justify-between animate-in slide-in-from-top duration-500 z-[160] sticky top-0 border-b border-orange-600 shadow-lg">
-              <div className="flex items-center gap-2">
-                  <AlertTriangle size={14} className="animate-pulse" />
-                  <span>Sincronização em Nuvem Desativada (Tabelas Faltando)</span>
-              </div>
-              <button 
-                onClick={() => setShowSettingsModal(true)}
-                className="bg-white text-orange-600 px-3 py-1 rounded-full hover:bg-orange-50 transition-colors shadow-sm"
-              >
-                Configurar Agora
-              </button>
+      {isAdmin && (
+          <div className={`${isVotingReleased ? 'bg-green-600' : 'bg-slate-900'} text-white px-4 py-2.5 text-[10px] font-black uppercase tracking-widest flex items-center justify-between animate-in slide-in-from-top duration-500 z-[160] sticky top-0 border-b border-white/10 shadow-lg`}>
+              <div className="flex items-center gap-3">{isVotingReleased ? <Unlock size={14} className="animate-pulse" /> : <Lock size={14} />}<span>{isVotingReleased ? 'Votação Liberada para Todos' : 'Fichas Ocultas para Jurados'}</span></div>
+              <button onClick={handleToggleVoting} className="bg-white text-slate-900 px-4 py-1.5 rounded-full hover:bg-slate-100 transition-all shadow-md active:scale-95 font-black uppercase">{isVotingReleased ? 'Encerrar Votação' : 'Liberar Fichas'}</button>
           </div>
       )}
 
-      <SettingsModal isOpen={showSettingsModal} onClose={() => setShowSettingsModal(false)} currentUser={currentUser} onUpdateUser={handleUpdateUser} currentLanguage={language} onLanguageChange={setLanguage} currentTheme={theme} onThemeChange={setTheme} pizzas={pizzas} socialData={socialData} onSimulateLevelUp={() => { setLevelUpLevel(l => l >= 5 ? 1 : l + 1); setIsSimulating(true); setShowLevelUpModal(true); setShowSettingsModal(false); }} themeColor={themeColor} onThemeColorChange={setThemeColor} />
+      {isAdmin && !cloudReady && (
+          <div className="bg-orange-500 text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center justify-between animate-in slide-in-from-top duration-500 z-[160] sticky top-0 border-b border-orange-600 shadow-lg">
+              <div className="flex items-center gap-2"><AlertTriangle size={14} className="animate-pulse" /><span>Sincronização em Nuvem Desativada</span></div>
+              <button onClick={() => setShowSettingsModal(true)} className="bg-white text-orange-600 px-3 py-1 rounded-full hover:bg-orange-50 transition-colors shadow-sm">Configurar Agora</button>
+          </div>
+      )}
+
+      <SettingsModal 
+        isOpen={showSettingsModal} 
+        onClose={() => setShowSettingsModal(false)} 
+        currentUser={currentUser} 
+        onUpdateUser={handleUpdateUser} 
+        currentLanguage={language} 
+        onLanguageChange={setLanguage} 
+        currentTheme={theme} 
+        onThemeChange={setTheme} 
+        pizzas={pizzas} 
+        socialData={socialData} 
+        onSimulateLevelUp={() => { setLevelUpLevel(l => l >= 5 ? 1 : l + 1); setIsSimulating(true); setShowLevelUpModal(true); setShowSettingsModal(false); }} 
+        themeColor={themeColor} 
+        onThemeColorChange={setThemeColor} 
+        onForceSync={async () => {
+            isSyncingRef.current = true;
+            const cp = await databaseService.getBackup('pizzas');
+            const cs = await databaseService.getBackup('social_data');
+            if (cp) setPizzas(cp);
+            if (cs) setSocialData(cs);
+            isSyncingRef.current = false;
+        }}
+      />
       {showProfilePage && <ProfilePage currentUser={currentUser} onUpdateUser={handleUpdateUser} onClose={() => setShowProfilePage(false)} pizzas={pizzas} socialData={socialData} language={language} pizzaOwners={PIZZA_OWNERS} />}
-      <HistoryModal isOpen={showHistory} onClose={() => setShowHistory(false)} onAlertAdmin={() => handleBroadcastAlert('history')} isAdmin={isAdmin} />
+      <HistoryModal isOpen={showHistory} onClose={() => setShowHistory(false)} onAlertAdmin={() => handleBroadcastAlert('history')} isAdmin={isAdmin} language={language} />
       <RulesModal isOpen={showRulesModal} onClose={() => setShowRulesModal(false)} language={language} onAlertAdmin={() => handleBroadcastAlert('rules')} isAdmin={isAdmin} />
       <CalendarModal isOpen={showCalendarModal || (activeTab === 'calendar' && isAdmin)} onClose={() => { setShowCalendarModal(false); if (activeTab === 'calendar') setActiveTab('news'); }} language={language} isAdmin={isAdmin} onUpdateDateGlobal={handleUpdateDate} pizzas={pizzas} />
       {showLevelUpModal && <LevelUpModal newLevel={levelUpLevel} onClose={() => setShowLevelUpModal(false)} nickname={currentUser.nickname} onTestNextLevel={isSimulating ? () => setLevelUpLevel(prev => prev >= 5 ? 1 : prev + 1) : undefined} />}
       <VotingSimulation isOpen={showSimulation} onClose={() => setShowSimulation(false)} onNavigateToSalgada={() => { setActiveTab('grid_salgada'); setGridMode('salgada'); }} currentTab={activeTab} />
 
-      <nav className={`${isAdmin && !cloudReady ? 'top-8' : 'top-0'} sticky pt-safe z-50 transition-all duration-500 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 shadow-sm`}>
+      <nav className={`${isAdmin ? 'top-[44px]' : 'top-0'} sticky pt-safe z-50 transition-all duration-500 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 shadow-sm`}>
         <div className="max-w-7xl mx-auto px-4 h-20 flex justify-between items-center relative">
             <div className="flex flex-col gap-1.5">
                 <button onClick={() => setShowProfilePage(true)} className="flex items-center gap-2 rounded-full pl-1 pr-3 py-1 border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 transition-all hover:scale-105">
@@ -637,45 +580,21 @@ const App: React.FC = () => {
                 </button>
                 <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800/50 px-2 py-0.5 rounded-full border border-slate-200 dark:border-slate-700 w-fit">
                     <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></span>
-                    <span className="text-[10px] font-black text-slate-600 dark:text-slate-300 flex items-center gap-1">
-                        {isOnline ? 'ONLINE' : 'OFFLINE'} | <Users size={10} className="text-indigo-500" /> {peerCount}
-                    </span>
+                    <span className="text-[10px] font-black text-slate-600 dark:text-slate-300 flex items-center gap-1">{isOnline ? t.online : t.offline} | <Users size={10} className="text-indigo-500" /> {peerCount}</span>
                 </div>
             </div>
-
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <img src={LOGO_BASE64} alt="Logo" className="h-16 w-auto object-contain pointer-events-auto" onClick={() => isAdmin && setActiveTab('news')} />
-            </div>
-
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none"><img src={LOGO_BASE64} alt="Logo" className="h-16 w-auto object-contain pointer-events-auto" onClick={() => isAdmin && setActiveTab('news')} /></div>
             <div className="flex items-center gap-1.5" ref={notificationMenuRef}>
-               <button onClick={() => setShowNotificationMenu(!showNotificationMenu)} className="p-2 rounded-lg relative text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 transition-all active:scale-95">
-                   <Bell size={20} className={unreadCount > 0 ? "animate-wiggle" : ""} />
-                   {unreadCount > 0 && <span className="absolute top-1 right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white dark:border-slate-900 animate-pulse"></span>}
-               </button>
+               <button onClick={() => setShowNotificationMenu(!showNotificationMenu)} className="p-2 rounded-lg relative text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 transition-all active:scale-95"><Bell size={20} className={unreadCount > 0 ? "animate-wiggle" : ""} />{unreadCount > 0 && <span className="absolute top-1 right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white dark:border-slate-900 animate-pulse"></span>}</button>
                {showNotificationMenu && (
                    <div className="absolute top-full right-0 mt-3 w-80 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden z-[200] animate-in slide-in-from-top-2">
-                       <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50">
-                           <h3 className="font-black text-xs uppercase text-slate-500">Notificações</h3>
-                           <div className="flex gap-3">
-                               <button onClick={markAllRead} className="text-[10px] font-bold text-indigo-500">Lidas</button>
-                               <button onClick={clearNotifications} className="text-[10px] font-bold text-red-500">Limpar</button>
-                           </div>
-                       </div>
-                       <div className="max-h-[300px] overflow-y-auto">
-                           {notifications.length === 0 ? <p className="p-8 text-center text-xs text-slate-400">Nenhuma notificação</p> : notifications.map(n => (
-                               <button key={n.id} onClick={() => handleNotificationClick(n)} className={`w-full text-left p-4 border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors flex gap-3 relative ${!n.read ? 'bg-indigo-50/30' : ''}`}>
-                                   <div className="p-2 bg-slate-100 dark:bg-slate-800 rounded-full h-fit"><Bell size={16} className="text-indigo-500" /></div>
-                                   <div><h4 className="text-sm font-bold">{n.title}</h4><p className="text-xs text-slate-500 line-clamp-2" dangerouslySetInnerHTML={{ __html: n.message.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>') }}></p></div>
-                                   {!n.read && <div className="absolute top-4 right-4 w-2 h-2 bg-red-500 rounded-full"></div>}
-                               </button>
-                           ))}
-                       </div>
+                       <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50"><h3 className="font-black text-xs uppercase text-slate-500">{translations[language].comments}</h3><div className="flex gap-3"><button onClick={markAllRead} className="text-[10px] font-bold text-indigo-500">Lidas</button><button onClick={clearNotifications} className="text-[10px] font-bold text-red-500">Limpar</button></div></div>
+                       <div className="max-h-[300px] overflow-y-auto">{notifications.length === 0 ? <p className="p-8 text-center text-xs text-slate-400">Nenhuma notificação</p> : notifications.map(n => (
+                               <button key={n.id} onClick={() => handleNotificationClick(n)} className={`w-full text-left p-4 border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors flex gap-3 relative ${!n.read ? 'bg-indigo-50/30' : ''}`}><div className="p-2 bg-slate-100 dark:bg-slate-800 rounded-full h-fit"><Bell size={16} className="text-indigo-500" /></div><div><h4 className="text-sm font-bold">{n.title}</h4><p className="text-xs text-slate-500 line-clamp-2" dangerouslySetInnerHTML={{ __html: n.message.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>') }}></p></div>{!n.read && <div className="absolute top-4 right-4 w-2 h-2 bg-red-500 rounded-full"></div>}</button>
+                           ))}</div>
                    </div>
                )}
-               <button onClick={() => setShowSettingsModal(true)} className="p-2 rounded-lg text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 relative">
-                   <SettingsIcon size={20} />
-                   {isAdmin && !cloudReady && <span className="absolute top-0 right-0 w-2 h-2 bg-orange-500 rounded-full animate-ping"></span>}
-               </button>
+               <button onClick={() => setShowSettingsModal(true)} className="p-2 rounded-lg text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 relative"><SettingsIcon size={20} />{isAdmin && !cloudReady && <span className="absolute top-0 right-0 w-2 h-2 bg-orange-500 rounded-full animate-ping"></span>}</button>
                <button onClick={handleLogout} className="p-2 rounded-lg hover:text-red-500 text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800"><LogOut size={20} /></button>
             </div>
         </div>
@@ -684,16 +603,7 @@ const App: React.FC = () => {
       <div className={`fixed bottom-6 pb-safe left-1/2 -translate-x-1/2 z-[100] flex gap-1 sm:gap-2 backdrop-blur-md px-4 py-3 rounded-full border border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 shadow-2xl transition-all duration-300 ${!isNavVisible ? 'opacity-0 translate-y-10' : 'opacity-100 translate-y-0'}`}>
           {visibleTabs.map(id => (
               <button key={id} onClick={() => handleNavClick(id)} className={`p-2.5 rounded-full transition-all relative ${activeTab === id ? 'bg-indigo-600 text-white -translate-y-2 shadow-lg scale-110' : 'text-slate-400 hover:text-slate-600'}`}>
-                  {id === 'news' ? <Newspaper size={20} /> : id === 'avisos' ? (
-                      <div className="relative group">
-                          <Megaphone size={20} />
-                          <div className="absolute -right-1.5 top-1/2 -translate-y-1/2 flex items-end gap-[1.5px] h-3 pointer-events-none">
-                              <div className="w-[1.5px] bg-current rounded-full animate-sound-bar" style={{ animationDelay: '0s' }}></div>
-                              <div className="w-[1.5px] bg-current rounded-full animate-sound-bar" style={{ animationDelay: '0.2s' }}></div>
-                              <div className="w-[1.5px] bg-current rounded-full animate-sound-bar" style={{ animationDelay: '0.4s' }}></div>
-                          </div>
-                      </div>
-                  ) : id === 'grid_salgada' ? <Pizza size={20} /> : id === 'grid_doce' ? <Cake size={20} /> : id === 'charts' ? <Trophy size={20} /> : id === 'rules' ? <ScrollText size={20} /> : id === 'dynamics' ? <Gamepad2 size={20} /> : id === 'album' ? <ImageIcon size={20} /> : id === 'calendar' ? <Calendar size={20} /> : <BookOpen size={20} />}
+                  {id === 'news' ? <Newspaper size={20} /> : id === 'avisos' ? (<div className="relative group"><Megaphone size={20} /><div className="absolute -right-1.5 top-1/2 -translate-y-1/2 flex items-end gap-[1.5px] h-3 pointer-events-none"><div className="w-[1.5px] bg-current rounded-full animate-sound-bar" style={{ animationDelay: '0s' }}></div><div className="w-[1.5px] bg-current rounded-full animate-sound-bar" style={{ animationDelay: '0.2s' }}></div><div className="w-[1.5px] bg-current rounded-full animate-sound-bar" style={{ animationDelay: '0.4s' }}></div></div></div>) : id === 'grid_salgada' ? <Pizza size={20} /> : id === 'grid_doce' ? <Cake size={20} /> : id === 'charts' ? <Trophy size={20} /> : id === 'rules' ? <ScrollText size={20} /> : id === 'dynamics' ? <Gamepad2 size={20} /> : id === 'album' ? <ImageIcon size={20} /> : id === 'calendar' ? <Calendar size={20} /> : <BookOpen size={20} />}
               </button>
           ))}
       </div>
@@ -706,32 +616,21 @@ const App: React.FC = () => {
             {activeTab === 'dynamics' && <DynamicsPage language={language} isAdmin={isAdmin} onAlertAdmin={() => handleBroadcastAlert('dynamics')} />}
             {(activeTab === 'grid_salgada' || activeTab === 'grid_doce') && (
                 <div className="space-y-6 pb-20">
-                    <h2 className="text-2xl font-black flex items-center gap-2">{gridMode === 'doce' ? <Cake className="text-pink-500" /> : <Pizza className="text-orange-500" />} Fichas {gridMode === 'doce' ? 'Doce' : 'Salgada'}</h2>
+                    <div className="flex items-center justify-between"><h2 className="text-2xl font-black flex items-center gap-2">{gridMode === 'doce' ? <Cake className="text-pink-500" /> : <Pizza className="text-orange-500" />} {t.grid} {gridMode === 'doce' ? 'Doce' : 'Salgada'}</h2></div>
                     <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2 items-center">
                         {['asc', 'desc', 'rank'].map(s => <button key={s} onClick={() => setGridSort(s as any)} className={`px-4 py-2 rounded-xl text-xs font-black border transition-colors ${gridSort === s ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white dark:bg-slate-800 text-slate-600'}`}>{s === 'asc' ? 'Crescente' : s === 'desc' ? 'Decrescente' : 'Melhores'}</button>)}
+                        <div className="flex items-center gap-2 ml-auto">
+                            <button onClick={() => setShowSimulation(true)} className="px-3 py-2 rounded-xl text-xs font-black border border-indigo-200 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-all flex items-center gap-1.5 shadow-sm active:scale-95"><HelpCircle size={14} /> Ajuda ?</button>
+                            {isAdmin && (<div className="group relative"><button onClick={handleClearScores} className="px-4 py-2 rounded-xl text-xs font-black border transition-all bg-red-50 text-red-600 border-red-200 hover:bg-red-100 flex items-center gap-1.5 shadow-sm active:scale-95"><Eraser size={14} /> Limpar</button></div>)}
+                        </div>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                        {sortedGridPizzas.map((p, i) => <PizzaCard key={String(p.id)} index={i} data={p} userId={userId} isAdmin={isAdmin} onUpdate={handleUpdateScore} onConfirm={handleConfirmVote} onUpdateNote={handleUpdateNote} onUpdateGlobalNote={handleUpdateNoteGlobal} onDelete={handleDeletePizza} onUpdateDate={handleUpdateDate} rank={rankMap[String(p.id)]} peerCount={peerCount} onAddPhoto={handleAddMedia} language={language} ownerName={isAdmin ? PIZZA_OWNERS[Number(p.id)] : undefined} variant={gridMode} />)}
-                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">{sortedGridPizzas.map((p, i) => <PizzaCard key={String(p.id)} index={i} data={p} userId={userId} isAdmin={isAdmin} onUpdate={handleUpdateScore} onConfirm={handleConfirmVote} onUpdateNote={handleUpdateNote} onUpdateGlobalNote={handleUpdateNoteGlobal} onDelete={handleDeletePizza} onUpdateDate={handleUpdateDate} rank={rankMap[String(p.id)]} peerCount={peerCount} onAddPhoto={handleAddMedia} language={language} ownerName={isAdmin ? PIZZA_OWNERS[Number(p.id)] : undefined} variant={gridMode} />)}</div>
                 </div>
             )}
             {activeTab === 'charts' && (
                 <div className="flex flex-col gap-6">
-                    {isAdmin && (
-                        <div className="p-4 bg-indigo-600/10 border-2 border-indigo-500 rounded-3xl flex items-center justify-between shadow-lg shadow-indigo-500/10">
-                            <div>
-                                <h3 className="font-black text-indigo-700 dark:text-indigo-300 uppercase text-xs tracking-widest">Controle Admin</h3>
-                                <p className="text-[10px] text-indigo-500 font-medium">Inicie a transmissão oficial do ranking final</p>
-                            </div>
-                            <button 
-                                onClick={() => setTriggerRankReveal(true)}
-                                className="px-6 py-3 bg-indigo-600 text-white font-black text-xs uppercase tracking-widest rounded-2xl shadow-xl hover:bg-indigo-700 transition-all flex items-center gap-2"
-                            >
-                                <Play size={16} fill="currentColor" /> Simular Apuração Visual
-                            </button>
-                        </div>
-                    )}
-                    <RankingTable data={pizzas} language={language} pizzaOwners={PIZZA_OWNERS} triggerReveal={triggerRankReveal} onRevealComplete={() => setTriggerRankReveal(false)} />
+                    {isAdmin && (<div className="p-4 bg-indigo-600/10 border-2 border-indigo-500 rounded-3xl flex items-center justify-between shadow-lg shadow-indigo-500/10"><div><h3 className="font-black text-indigo-700 dark:text-indigo-300 uppercase text-xs tracking-widest">Controle Admin</h3><p className="text-[10px] text-indigo-500 font-medium">Inicie a transmissão oficial do ranking final</p></div><button onClick={() => setTriggerRankReveal(true)} className="px-6 py-3 bg-indigo-600 text-white font-black text-xs uppercase tracking-widest rounded-2xl shadow-xl hover:bg-indigo-700 transition-all flex items-center gap-2"><Play size={16} fill="currentColor" /> Simular Apuração Visual</button></div>)}
+                    <RankingTable data={pizzas} language={language} pizzaOwners={PIZZA_OWNERS} triggerReveal={triggerRankReveal} onRevealComplete={handleRevealComplete} />
                 </div>
             )}
             {activeTab === 'album' && <UnifiedPhotoAlbum pizzas={pizzas} userId={userId} onAddMedia={handleAddMedia} onDeleteMedia={handleDeleteMedia} socialData={socialData} onAddComment={handleAddComment} onEditComment={handleEditComment} onDeleteComment={handleDeleteComment} onReact={handleMainReaction} onCommentReact={handleCommentReaction} onUpdateCaption={handleUpdateCaption} language={language} currentUser={currentUser} />}

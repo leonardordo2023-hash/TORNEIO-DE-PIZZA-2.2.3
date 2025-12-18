@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { X, ArrowRight, Star, Lock, Eye, Send, Pizza, Cake, Sparkles } from 'lucide-react';
+import { X, ArrowRight, Star, Lock, Eye, Send, Pizza, Cake, Sparkles, MessageSquare, Info } from 'lucide-react';
 
 interface VotingSimulationProps {
     isOpen: boolean;
@@ -20,53 +20,45 @@ export const VotingSimulation: React.FC<VotingSimulationProps> = ({ isOpen, onCl
 
     const steps = [
         {
-            title: "Tutorial de Votação",
-            text: "Olá! Vou te mostrar passo a passo como avaliar as pizzas do torneio da forma correta. Vamos lá?",
-            icon: <Sparkles className="text-indigo-500" />,
+            title: "Guia de Votação",
+            text: "Bem-vindo! Vamos aprender a avaliar as pizzas como um verdadeiro jurado profissional.",
+            icon: <Sparkles className="text-yellow-500 animate-pulse" size={32} />,
             target: "none"
         },
         {
-            title: "1. Abrindo as Fichas",
-            text: isDoce 
-                ? "Primeiro, clique no ícone da Pizza (Fichas doce ) no menu lá embaixo para ver as opções."
-                : "Primeiro, clique no ícone da Pizza (Fichas Salgadas) no menu lá embaixo para ver as opções.",
-            icon: isDoce ? <Cake className="text-pink-500" /> : <Pizza className="text-orange-500" />,
+            title: "1. Escolha a Categoria",
+            text: "No menu inferior, você alterna entre as Fichas Salgadas (Laranja) e Doces (Rosa). Cada uma tem seu próprio ranking!",
+            icon: <div className="flex gap-2"><Pizza className="text-orange-500" /><Cake className="text-pink-500" /></div>,
             target: "bottom-nav"
         },
         {
-            title: "2. Avaliando a Pizza #7",
-            text: "Na Pizza #7, dê sua nota de 0 a 10 em Aparência e Sabor. Seja justo, seu voto ajuda a definir o campeão!",
-            icon: <div className="flex gap-1"><Star size={16} className="text-purple-500 fill-purple-500"/><Star size={16} className="text-orange-500 fill-orange-500"/></div>,
+            title: "2. Notas de 0 a 10",
+            text: "Avalie a 'Aparência' e o 'Sabor'. Você pode usar casas decimais (ex: 9.5). Seja criterioso!",
+            icon: <div className="flex gap-1 font-black text-indigo-600 bg-indigo-50 px-3 py-1 rounded-lg border border-indigo-200">9.5</div>,
             target: "pizza-inputs"
         },
         {
-            title: "3. O Placar ao lado da Estrela",
-            text: "Este número que aparece ao lado da estrela é o total de pontos que a pizza já acumulou de todos os jurados.",
-            icon: <div className="bg-slate-200 dark:bg-slate-700 px-2 py-0.5 rounded text-[10px] font-black">45.5</div>,
-            target: "points-info"
-        },
-        {
-            title: "4. Estrela: Bônus de Massa",
-            text: "A Estrela serve para dar +1 ponto extra para aquele que fez a massa da pizza manualmente! Clique se a massa for artesanal.",
-            icon: <Star size={20} className="text-yellow-500 fill-yellow-500" />,
+            title: "3. Estrela de Bônus (+1pt)",
+            text: "A Estrela Amarela dá +1 ponto extra. Use apenas se o competidor fez a massa manualmente (Trabalho Artesanal)!",
+            icon: <Star size={24} className="text-yellow-500 fill-yellow-500 animate-wiggle" />,
             target: "star-btn"
         },
         {
-            title: "5. Suas Anotações",
-            text: "Este campo serve para VOCÊ gravar a receita ou algo importante da pizza. É privado, apenas você verá o que escreveu aqui.",
-            icon: <Lock size={20} className="text-blue-500" />,
+            title: "4. Suas Anotações (Privado)",
+            text: "O primeiro campo é só seu. Escreva lembretes ou receitas. Ninguém mais verá isso, é o seu diário de bordo.",
+            icon: <div className="p-2 bg-blue-100 rounded-lg text-blue-600"><Lock size={20} /></div>,
             target: "notes-private"
         },
         {
-            title: "6. Críticas Anônimas",
-            text: "Aqui as críticas todos vêem! É um comentário em tempo real, mas fique tranquilo: será anônimo, ninguém saberá quem escreveu.",
-            icon: <Eye size={20} className="text-red-500" />,
+            title: "5. Críticas Anônimas (Público)",
+            text: "O campo azul é a Crítica Anônima. Todos os jurados e o dono da pizza verão o que você escreveu, mas sem saber quem foi!",
+            icon: <div className="p-2 bg-red-100 rounded-lg text-red-600 flex items-center gap-1"><Eye size={18} /> <span className="text-[10px] font-black uppercase">Público</span></div>,
             target: "notes-public"
         },
         {
-            title: "7. Botão Votar",
-            text: "Após preencher tudo, clique em VOTAR. Uma vez confirmado, seu voto será computado pelo sistema imediatamente!",
-            icon: <Send size={20} className="text-green-500" />,
+            title: "6. Enviar Voto",
+            text: "Tudo pronto? Clique em VOTAR. Após enviado, você não poderá alterar as notas, apenas as anotações.",
+            icon: <div className="p-2 bg-green-500 rounded-lg text-white"><Send size={20} /></div>,
             target: "vote-btn"
         }
     ];
@@ -88,59 +80,67 @@ export const VotingSimulation: React.FC<VotingSimulationProps> = ({ isOpen, onCl
     const currentStep = steps[step];
 
     return (
-        <div className="fixed inset-0 z-[600] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
+        <div className="fixed inset-0 z-[600] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-in fade-in" onClick={onClose}>
             
             <div 
-                className="relative w-full max-w-[280px] sm:max-w-xs bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl border-4 border-indigo-500 animate-in zoom-in-95 duration-300 overflow-hidden"
+                className="relative w-full max-w-[300px] bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl border-4 border-indigo-500 animate-in zoom-in-95 duration-300 overflow-hidden"
                 onClick={(e) => e.stopPropagation()}
             >
-                <button onClick={onClose} className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 transition-colors">
+                <div className="absolute top-0 left-0 w-full h-1 bg-slate-100 dark:bg-slate-800">
+                    <div 
+                        className="h-full bg-indigo-500 transition-all duration-500" 
+                        style={{ width: `${((step + 1) / steps.length) * 100}%` }}
+                    ></div>
+                </div>
+
+                <button onClick={onClose} className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 transition-colors z-20">
                     <X size={20} />
                 </button>
 
                 <div className="p-6 sm:p-8">
-                    <div className="flex justify-center mb-4">
-                        <div className="p-3 bg-indigo-50 dark:bg-indigo-900/30 rounded-full animate-bounce-slow">
+                    <div className="flex justify-center mb-6">
+                        <div className="w-16 h-16 bg-indigo-50 dark:bg-indigo-900/30 rounded-2xl flex items-center justify-center shadow-inner border border-indigo-100 dark:border-indigo-800/50">
                             {currentStep.icon}
                         </div>
                     </div>
                     
-                    <h3 className="text-lg font-black text-center text-slate-800 dark:text-white uppercase mb-2 tracking-tight">
+                    <h3 className="text-xl font-black text-center text-slate-800 dark:text-white uppercase mb-3 tracking-tighter leading-none">
                         {currentStep.title}
                     </h3>
                     
-                    <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 text-center leading-relaxed mb-6 font-medium min-h-[80px]">
-                        {currentStep.text}
-                    </p>
+                    <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 mb-6">
+                        <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 text-center leading-relaxed font-bold min-h-[70px]">
+                            {currentStep.text}
+                        </p>
+                    </div>
                     
                     <button 
                         onClick={handleNext}
-                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-black py-3 rounded-2xl shadow-lg flex items-center justify-center gap-2 transition-all active:scale-95 text-xs"
+                        className={`w-full font-black py-4 rounded-2xl shadow-lg flex items-center justify-center gap-2 transition-all active:scale-95 text-xs uppercase tracking-widest ${step === steps.length - 1 ? 'bg-green-600 text-white' : 'bg-indigo-600 text-white'}`}
                     >
-                        {step === steps.length - 1 ? "ENTENDI TUDO!" : "PRÓXIMO PASSO"} <ArrowRight size={16} />
+                        {step === steps.length - 1 ? "COMEÇAR A VOTAR!" : "ENTENDI, PRÓXIMO"} <ArrowRight size={16} />
                     </button>
                 </div>
                 
-                <div className="flex gap-1 justify-center pb-6">
+                <div className="flex gap-1.5 justify-center pb-6">
                     {steps.map((_, i) => (
-                        <div key={i} className={`h-1 rounded-full transition-all duration-500 ${i === step ? 'w-6 bg-indigo-500' : 'w-1.5 bg-slate-200 dark:bg-slate-700'}`}></div>
+                        <div key={i} className={`h-1.5 rounded-full transition-all duration-500 ${i === step ? 'w-8 bg-indigo-500' : 'w-1.5 bg-slate-200 dark:bg-slate-700'}`}></div>
                     ))}
                 </div>
             </div>
 
+            {/* Marcadores de tutorial dinâmicos baseados no step */}
             {currentStep.target !== "none" && (
                 <div className={`fixed z-[610] pointer-events-none transition-all duration-700 ${
-                    currentStep.target === 'bottom-nav' ? 'bottom-24 left-1/2 -translate-x-[110px]' :
-                    currentStep.target === 'pizza-inputs' ? 'top-1/2 left-1/2 -translate-x-1/2 -translate-y-20' :
-                    currentStep.target === 'points-info' ? 'top-1/2 left-1/2 translate-x-10 -translate-y-40' :
-                    currentStep.target === 'star-btn' ? 'top-1/2 left-1/2 translate-x-20 -translate-y-40' :
-                    currentStep.target === 'notes-private' ? 'top-1/2 left-1/2 -translate-x-1/2 translate-y-10' :
-                    currentStep.target === 'notes-public' ? 'top-1/2 left-1/2 -translate-x-1/2 translate-y-24' :
-                    currentStep.target === 'vote-btn' ? 'top-1/2 left-1/2 -translate-x-1/2 translate-y-0' : ''
+                    currentStep.target === 'bottom-nav' ? 'bottom-24 left-1/2 -translate-x-1/2' :
+                    currentStep.target === 'pizza-inputs' ? 'top-1/2 left-1/2 -translate-x-1/2 -translate-y-24' :
+                    currentStep.target === 'star-btn' ? 'top-1/2 left-1/2 translate-x-20 -translate-y-44' :
+                    currentStep.target === 'notes-private' ? 'top-1/2 left-1/2 -translate-x-1/2 translate-y-12' :
+                    currentStep.target === 'notes-public' ? 'top-1/2 left-1/2 -translate-x-1/2 translate-y-28' :
+                    currentStep.target === 'vote-btn' ? 'top-1/2 left-1/2 -translate-x-1/2 translate-y-4' : ''
                 }`}>
-                    <div className="flex flex-col items-center animate-bounce">
-                        <div className="bg-indigo-600 text-white px-3 py-1 rounded-full text-[9px] font-black uppercase mb-1 shadow-lg border border-white/20 whitespace-nowrap">Tutorial: Veja Aqui</div>
-                        <div className="w-2 h-2 bg-indigo-600 rotate-45"></div>
+                    <div className="flex flex-col items-center">
+                        <div className="w-4 h-4 bg-indigo-500 rotate-45 animate-bounce shadow-2xl border-2 border-white dark:border-slate-800"></div>
                     </div>
                 </div>
             )}

@@ -3,48 +3,56 @@ import { UserAccount } from "../types";
 import { securityService } from "./securityService";
 import { supabase } from "./supabaseClient";
 
-/**
- * SQL PARA CONFIGURAÇÃO NO SUPABASE (Copie e cole no SQL Editor do Supabase):
- * 
- * CREATE TABLE IF NOT EXISTS public.users (
- *   nickname TEXT PRIMARY KEY,
- *   phone TEXT,
- *   password TEXT,
- *   isVerified BOOLEAN DEFAULT true,
- *   avatar TEXT,
- *   cover TEXT,
- *   created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
- * );
- */
-
 const USERS_KEY = 'pizza_users_db';
 const CURRENT_USER_KEY = 'pizza_current_user';
 
+const REQUIRED_NAMES = [
+    "@Adry", "@Ana Julia", "@Angelica", "@Elisa", "@Gecilda", 
+    "@Marta", "@Neiva", "@Rebecca", "@Simone", "@Vania", "@Vanusa", "@Yulimar"
+];
+
 export const authService = {
-    // Sincroniza a lista local de usuários com o Supabase
+    ensureRequiredProfiles: (currentUsers: UserAccount[]): UserAccount[] => {
+        let updated = [...currentUsers];
+        let changed = false;
+
+        REQUIRED_NAMES.forEach(name => {
+            if (!updated.some(u => u.nickname.toLowerCase() === name.toLowerCase())) {
+                updated.push({
+                    nickname: name,
+                    phone: '',
+                    password: '0000',
+                    isVerified: true,
+                    avatar: `https://ui-avatars.com/api/?name=${name.replace('@', '')}&background=random&color=fff`
+                });
+                changed = true;
+            }
+        });
+
+        if (changed) {
+            localStorage.setItem(USERS_KEY, JSON.stringify(securityService.deepClean(updated)));
+        }
+        return updated;
+    },
+
     syncUsers: async (): Promise<UserAccount[]> => {
         try {
             const { data, error } = await supabase
                 .from('users')
                 .select('*');
             
-            if (error) {
-                if (error.message.includes('public.users')) {
-                    console.error("ALERTA SUPABASE: A tabela 'users' não existe no banco de dados.");
-                } else {
-                    throw error;
-                }
-            }
+            if (error) throw error;
             
             if (data) {
                 const cleanData = securityService.deepClean(data);
-                localStorage.setItem(USERS_KEY, JSON.stringify(cleanData));
-                return cleanData;
+                const completeData = authService.ensureRequiredProfiles(cleanData);
+                localStorage.setItem(USERS_KEY, JSON.stringify(completeData));
+                return completeData;
             }
-        } catch (e) {
+        } catch (e: any) {
             console.warn("Supabase sync failed, using local fallback", e);
         }
-        return authService.getUsers();
+        return authService.ensureRequiredProfiles(authService.getUsers());
     },
 
     getUsers: (): UserAccount[] => {
@@ -56,7 +64,6 @@ export const authService = {
 
     registerUser: async (user: UserAccount): Promise<void> => {
         try {
-            // Salva no Supabase
             const { error } = await supabase
                 .from('users')
                 .upsert({
@@ -69,13 +76,11 @@ export const authService = {
                 }, { onConflict: 'nickname' });
 
             if (error) {
-                if (error.message.includes('public.users')) {
-                    throw new Error("O banco de dados online ainda não foi configurado pelo administrador.");
-                }
-                throw error;
+                // Captura a mensagem de erro específica do Supabase em vez do objeto
+                const errorMsg = error.message || JSON.stringify(error);
+                throw new Error(errorMsg);
             }
 
-            // Atualiza localmente
             const users = authService.getUsers();
             if (!users.some(u => u.nickname.toLowerCase() === user.nickname.toLowerCase())) {
                 users.push(user);
@@ -83,7 +88,25 @@ export const authService = {
             }
         } catch (e: any) {
             console.error("Error registering user in Supabase", e);
-            throw new Error(e.message || "Falha ao salvar no banco de dados.");
+            // Garante que o erro retornado seja uma string para o UI
+            throw new Error(e.message || "Erro de conexão com o banco de dados.");
+        }
+    },
+
+    deleteUser: async (nickname: string): Promise<void> => {
+        try {
+            const { error } = await supabase
+                .from('users')
+                .delete()
+                .eq('nickname', nickname);
+            
+            if (error) throw new Error(error.message);
+            
+            const users = authService.getUsers().filter(u => u.nickname !== nickname);
+            localStorage.setItem(USERS_KEY, JSON.stringify(securityService.deepClean(users)));
+        } catch (e: any) {
+            console.error("Error deleting user", e);
+            throw new Error(e.message || "Não foi possível excluir o perfil.");
         }
     },
 
@@ -101,7 +124,7 @@ export const authService = {
                 .update(securityService.deepClean(updates))
                 .eq('nickname', currentNickname);
             
-            if (error && !error.message.includes('public.users')) throw error;
+            if (error) throw new Error(error.message);
         } catch (e) {
             console.error("Supabase update error", e);
         }
@@ -123,7 +146,8 @@ export const authService = {
                 users.push(nu);
             }
         });
-        localStorage.setItem(USERS_KEY, JSON.stringify(securityService.deepClean(users)));
+        const complete = authService.ensureRequiredProfiles(users);
+        localStorage.setItem(USERS_KEY, JSON.stringify(securityService.deepClean(complete)));
     },
 
     saveUser: (user: UserAccount) => {

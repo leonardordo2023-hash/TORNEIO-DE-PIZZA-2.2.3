@@ -4,7 +4,11 @@ import { MediaItem, MediaType } from "../types";
 /**
  * Compresses images and validates videos.
  */
-export const processMediaFile = (file: File, maxVideoSizeMB: number = 50): Promise<{ url: string, type: MediaType }> => {
+export const processMediaFile = (
+  file: File, 
+  maxVideoSizeMB: number = 50,
+  onProgress?: (percent: number) => void
+): Promise<{ url: string, type: MediaType }> => {
   return new Promise((resolve, reject) => {
     // Handle Video
     if (file.type.startsWith('video/')) {
@@ -14,30 +18,39 @@ export const processMediaFile = (file: File, maxVideoSizeMB: number = 50): Promi
         }
 
         const reader = new FileReader();
-        reader.readAsDataURL(file);
+        
+        reader.onprogress = (event) => {
+            if (event.lengthComputable && onProgress) {
+                const percent = Math.round((event.loaded / event.total) * 100);
+                onProgress(percent);
+            }
+        };
+
         reader.onload = (e) => {
+            if (onProgress) onProgress(100);
             resolve({
                 url: e.target?.result as string,
                 type: 'video'
             });
         };
+        
         reader.onerror = (err) => reject(new Error("Erro ao ler o arquivo de vídeo."));
+        reader.readAsDataURL(file);
         return;
     }
 
     // Handle Image (Compression with Memory Optimization)
-    // For chat large images (maxVideoSizeMB > 50), we use less compression
     const isHighQuality = maxVideoSizeMB > 50;
-    const maxWidth = isHighQuality ? 1920 : 800; 
-    const maxHeight = isHighQuality ? 1920 : 800;
-    const quality = isHighQuality ? 0.9 : 0.7;
+    const maxWidth = isHighQuality ? 1920 : 1080; 
+    const maxHeight = isHighQuality ? 1920 : 1080;
+    const quality = isHighQuality ? 0.9 : 0.8;
 
-    // Use createObjectURL instead of FileReader to prevent memory spikes (White Screen crash)
     const objectUrl = URL.createObjectURL(file);
     const img = new Image();
     img.src = objectUrl;
 
     img.onload = () => {
+        if (onProgress) onProgress(50); // Simulação de progresso para imagens
         let width = img.width;
         let height = img.height;
 
@@ -66,11 +79,10 @@ export const processMediaFile = (file: File, maxVideoSizeMB: number = 50): Promi
 
         ctx.drawImage(img, 0, 0, width, height);
         
-        // This compression step is crucial
         const dataUrl = canvas.toDataURL('image/jpeg', quality);
         
-        // Clean up memory
         URL.revokeObjectURL(objectUrl);
+        if (onProgress) onProgress(100);
         
         resolve({
             url: dataUrl,

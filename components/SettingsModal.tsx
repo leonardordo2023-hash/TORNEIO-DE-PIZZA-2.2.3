@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Globe, Settings as SettingsIcon, Loader2, Download, Upload, Database, ChevronRight, ArrowLeft, Palette, Sun, Moon, Check, HardDrive, Smartphone, Zap, History, Save, Trash2, RotateCcw, Droplet, Star, Sparkles, Leaf, Cloud, CloudOff, AlertCircle, Copy } from 'lucide-react';
+import { X, Globe, Settings as SettingsIcon, Loader2, Download, Upload, Database, ChevronRight, ArrowLeft, Palette, Sun, Moon, Check, HardDrive, Smartphone, Zap, History, Save, Trash2, RotateCcw, Droplet, Star, Sparkles, Leaf, Cloud, CloudOff, AlertCircle, Copy, RefreshCw } from 'lucide-react';
 import { UserAccount, PizzaData, SocialData } from '../types';
 import { Language, translations } from '../services/translations';
 import { databaseService } from '../services/databaseService';
@@ -22,18 +22,20 @@ interface SettingsModalProps {
     onSimulateLevelUp: () => void;
     themeColor: 'default' | 'babyBlue' | 'pink' | 'lightPurple' | 'babyGreen';
     onThemeColorChange: (color: 'default' | 'babyBlue' | 'pink' | 'lightPurple' | 'babyGreen') => void;
+    onForceSync?: () => Promise<void>;
 }
 
 type SettingsView = 'menu' | 'language' | 'backup' | 'theme' | 'cloud_status';
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ 
-    isOpen, onClose, currentUser, onUpdateUser, currentLanguage, onLanguageChange, currentTheme, onThemeChange, pizzas, socialData, installPrompt, onInstall, onSimulateLevelUp, themeColor, onThemeColorChange
+    isOpen, onClose, currentUser, onUpdateUser, currentLanguage, onLanguageChange, currentTheme, onThemeChange, pizzas, socialData, installPrompt, onInstall, onSimulateLevelUp, themeColor, onThemeColorChange, onForceSync
 }) => {
     const t = translations[currentLanguage];
     const [activeView, setActiveView] = useState<SettingsView>('menu');
     const [storageInfo, setStorageInfo] = useState<{ usage: number, quota: number } | null>(null);
     const [snapshots, setSnapshots] = useState<any[]>([]);
     const [isCreatingSnapshot, setIsCreatingSnapshot] = useState(false);
+    const [isSyncing, setIsSyncing] = useState(false);
     const [cloudStatus, setCloudStatus] = useState(databaseService.getCloudStatus());
 
     const isAdmin = currentUser?.nickname.toLowerCase() === '@leonardo';
@@ -55,6 +57,27 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const loadSnapshots = async () => {
         const list = await databaseService.getSnapshots();
         setSnapshots(list.sort((a, b) => b.timestamp - a.timestamp));
+    };
+
+    const handleForceSync = async () => {
+        setIsSyncing(true);
+        try {
+            // Prioridade total para a nuvem no botão de restaurar
+            const cloudPizzas = await databaseService.getFromCloud('pizzas');
+            const cloudSocial = await databaseService.getFromCloud('social_data');
+            
+            if (cloudPizzas) localStorage.setItem('pizzaGradeDataV2', JSON.stringify(cloudPizzas));
+            if (cloudSocial) localStorage.setItem('pizza_social_data', JSON.stringify(cloudSocial));
+            
+            if (onForceSync) await onForceSync();
+            
+            alert("Restauração da Nuvem concluída com sucesso!");
+            window.location.reload();
+        } catch (e) {
+            alert("Erro ao sincronizar dados da nuvem.");
+        } finally {
+            setIsSyncing(false);
+        }
     };
 
     if (!isOpen) return null;
@@ -139,13 +162,10 @@ ALTER PUBLICATION supabase_realtime ADD TABLE app_state;`.trim();
                     {activeView === 'menu' && (
                         <div className="space-y-3">
                             {isAdmin && !cloudStatus.isReady && (
-                                <MenuItem 
-                                    icon={AlertCircle} 
-                                    label="Configurar Supabase" 
-                                    subLabel="Tabelas não encontradas" 
-                                    onClick={() => setActiveView('cloud_status')} 
-                                    danger={true} 
-                                />
+                                <MenuItem icon={AlertCircle} label="Configurar Supabase" subLabel="Tabelas não encontradas" onClick={() => setActiveView('cloud_status')} danger={true} />
+                            )}
+                            {isAdmin && (
+                                <MenuItem icon={RefreshCw} label="Restaurar da Nuvem" subLabel={isSyncing ? "Restaurando..." : "Forçar download total da nuvem"} onClick={handleForceSync} highlight={true} />
                             )}
                             {installPrompt && <MenuItem icon={Smartphone} label="Instalar Aplicativo" subLabel="Acesso rápido na tela inicial" onClick={() => onInstall?.()} highlight={true} />}
                             {isAdmin && <MenuItem icon={Zap} label="Simular Level Up" subLabel="Testar Animação de Nível" onClick={onSimulateLevelUp} highlight={true} />}
@@ -159,30 +179,14 @@ ALTER PUBLICATION supabase_realtime ADD TABLE app_state;`.trim();
                         <div className="space-y-4 animate-in slide-in-from-right duration-300">
                             <div className="p-4 bg-orange-100 dark:bg-orange-900/30 rounded-2xl border border-orange-200 dark:border-orange-800">
                                 <h3 className="text-sm font-black text-orange-700 dark:text-orange-300 uppercase mb-2">Por que este erro?</h3>
-                                <p className="text-xs text-orange-600 dark:text-orange-400 leading-relaxed">
-                                    O Supabase requer que você crie as tabelas manualmente no <b>SQL Editor</b> do painel deles. Sem isso, o modo 100% online não funciona.
-                                </p>
+                                <p className="text-xs text-orange-600 dark:text-orange-400 leading-relaxed">O Supabase requer que você crie as tabelas manualmente no <b>SQL Editor</b> do painel deles.</p>
                             </div>
                             <div className="space-y-2">
                                 <h4 className="text-[10px] font-black uppercase text-slate-400 ml-1">Script para o SQL Editor</h4>
                                 <div className="bg-slate-900 p-3 rounded-xl border border-slate-700 relative group">
                                     <pre className="text-[8px] text-green-400 overflow-x-auto font-mono max-h-40">{SQL_SCRIPT}</pre>
-                                    <button 
-                                        onClick={handleCopySQL}
-                                        className="absolute top-2 right-2 p-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-all"
-                                    >
-                                        <Copy size={14} />
-                                    </button>
+                                    <button onClick={handleCopySQL} className="absolute top-2 right-2 p-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-all"><Copy size={14} /></button>
                                 </div>
-                            </div>
-                            <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
-                                <h4 className="text-[10px] font-black uppercase text-slate-500 mb-2">Instruções:</h4>
-                                <ol className="text-[10px] text-slate-600 dark:text-slate-400 list-decimal ml-4 space-y-1">
-                                    <li>Copie o script acima.</li>
-                                    <li>Abra o <b>SQL Editor</b> no painel do Supabase.</li>
-                                    <li>Cole e clique em <b>RUN</b>.</li>
-                                    <li>Atualize este aplicativo.</li>
-                                </ol>
                             </div>
                         </div>
                     )}
@@ -197,14 +201,8 @@ ALTER PUBLICATION supabase_realtime ADD TABLE app_state;`.trim();
                                 <div className="max-h-[200px] overflow-y-auto">
                                     {snapshots.length === 0 ? <p className="p-4 text-center text-[10px] text-slate-400">Nenhum snapshot.</p> : snapshots.map(s => (
                                         <div key={s.id} onClick={() => handleRestoreSnapshot(s)} className="p-3 border-b border-slate-100 dark:border-slate-800 last:border-0 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer flex justify-between items-center group">
-                                            <div className="min-w-0 flex-1">
-                                                <span className="block text-xs font-bold truncate text-slate-700 dark:text-slate-200">{s.name}</span>
-                                                <span className="text-[9px] text-slate-400">{new Date(s.timestamp).toLocaleString()}</span>
-                                            </div>
-                                            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <RotateCcw size={14} className="text-indigo-500" />
-                                                <button onClick={(e) => handleDeleteSnapshot(e, s.id)} className="p-1 text-slate-400 hover:text-red-500"><Trash2 size={14}/></button>
-                                            </div>
+                                            <div className="min-w-0 flex-1"><span className="block text-xs font-bold truncate text-slate-700 dark:text-slate-200">{s.name}</span><span className="text-[9px] text-slate-400">{new Date(s.timestamp).toLocaleString()}</span></div>
+                                            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity"><RotateCcw size={14} className="text-indigo-500" /><button onClick={(e) => handleDeleteSnapshot(e, s.id)} className="p-1 text-slate-400 hover:text-red-500"><Trash2 size={14}/></button></div>
                                         </div>
                                     ))}
                                 </div>
@@ -217,12 +215,10 @@ ALTER PUBLICATION supabase_realtime ADD TABLE app_state;`.trim();
                             <div className="space-y-3">
                                 <h4 className="text-[10px] font-black uppercase text-slate-400 ml-1">Modo</h4>
                                 <button onClick={() => onThemeChange('light')} className={`w-full p-4 rounded-2xl border-2 transition-all flex items-center justify-between ${currentTheme === 'light' ? 'border-orange-500 bg-orange-50 dark:bg-orange-900/20' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800'}`}>
-                                    <div className="flex items-center gap-4"><div className="p-3 rounded-full bg-white border border-slate-200 text-orange-500"><Sun size={24} /></div><div className="text-left"><span className="block font-bold">{t.light}</span></div></div>
-                                    {currentTheme === 'light' && <div className="bg-orange-500 text-white p-1 rounded-full"><Check size={16} /></div>}
+                                    <div className="flex items-center gap-4"><div className="p-3 rounded-full bg-white border border-slate-200 text-orange-500"><Sun size={24} /></div><div className="text-left"><span className="block font-bold">{t.light}</span></div></div>{currentTheme === 'light' && <div className="bg-orange-500 text-white p-1 rounded-full"><Check size={16} /></div>}
                                 </button>
                                 <button onClick={() => onThemeChange('dark')} className={`w-full p-4 rounded-2xl border-2 transition-all flex items-center justify-between ${currentTheme === 'dark' ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800'}`}>
-                                    <div className="flex items-center gap-4"><div className="p-3 rounded-full bg-slate-800 border border-slate-700 text-indigo-400"><Moon size={24} /></div><div className="text-left"><span className="block font-bold">{t.dark}</span></div></div>
-                                    {currentTheme === 'dark' && <div className="bg-indigo-500 text-white p-1 rounded-full"><Check size={16} /></div>}
+                                    <div className="flex items-center gap-4"><div className="p-3 rounded-full bg-slate-800 border border-slate-700 text-indigo-400"><Moon size={24} /></div><div className="text-left"><span className="block font-bold">{t.dark}</span></div></div>{currentTheme === 'dark' && <div className="bg-indigo-500 text-white p-1 rounded-full"><Check size={16} /></div>}
                                 </button>
                             </div>
                         </div>

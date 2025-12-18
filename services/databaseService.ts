@@ -2,35 +2,12 @@
 import { PizzaData, SocialData, UserAccount } from "../types";
 import { supabase } from "./supabaseClient";
 
-/**
- * SQL NECESSÁRIO PARA O SUPABASE:
- * 
- * CREATE TABLE IF NOT EXISTS public.app_state (
- *   key TEXT PRIMARY KEY,
- *   data JSONB NOT NULL,
- *   updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
- * );
- * 
- * CREATE TABLE IF NOT EXISTS public.users (
- *   nickname TEXT PRIMARY KEY,
- *   phone TEXT,
- *   password TEXT,
- *   isVerified BOOLEAN DEFAULT true,
- *   avatar TEXT,
- *   cover TEXT,
- *   created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
- * );
- * 
- * ALTER PUBLICATION supabase_realtime ADD TABLE app_state;
- */
-
 const DB_NAME = 'PizzaTorneioDB';
 const DB_VERSION = 2; 
 const STORE_BACKUP = 'app_backups';
 const STORE_MEDIA = 'media_archive';
 const STORE_SNAPSHOTS = 'app_snapshots'; 
 
-// Estado interno para evitar spam de erros
 let isAppStateTableMissing = false;
 let isUsersTableMissing = false;
 
@@ -66,24 +43,25 @@ export const databaseService = {
         if (isAppStateTableMissing || !data) return;
         
         try {
+            // Limpa o objeto de possíveis referências circulares antes de enviar
+            const cleanData = JSON.parse(JSON.stringify(data));
             const { error } = await supabase
                 .from('app_state')
                 .upsert({ 
                     key, 
-                    data: JSON.parse(JSON.stringify(data)), 
+                    data: cleanData, 
                     updated_at: new Date().toISOString() 
                 }, { onConflict: 'key' });
             
             if (error) {
                 if (error.message.includes('app_state') || error.code === '42P01') {
                     isAppStateTableMissing = true;
-                    console.warn("Cloud sync paused: Table 'app_state' not found.");
-                    return;
+                    console.warn("Sincronização pausada: Tabela 'app_state' não encontrada.");
                 }
                 throw error;
             }
         } catch (e: any) {
-            // Silencioso
+            console.error(`Erro ao salvar ${key} na nuvem:`, e.message);
         }
     },
 
@@ -94,7 +72,7 @@ export const databaseService = {
                 .from('app_state')
                 .select('data')
                 .eq('key', key)
-                .single();
+                .maybeSingle();
             
             if (error) {
                 if (error.message.includes('app_state') || error.code === '42P01') {
@@ -102,17 +80,17 @@ export const databaseService = {
                 }
                 return null;
             }
-            return data?.data;
+            return data?.data || null;
         } catch (e) {
             return null;
         }
     },
 
     saveBackup: async (key: string, data: any) => {
-        // Tenta salvar na nuvem primeiro
+        // Salva na nuvem (Persistência Global)
         databaseService.saveToCloud(key, data);
         
-        // Salva no IndexedDB (quota muito maior que localStorage)
+        // Salva no IndexedDB (Persistência Local Robusta)
         try {
             const db = await openDB();
             const tx = db.transaction(STORE_BACKUP, 'readwrite');
@@ -128,11 +106,15 @@ export const databaseService = {
     },
 
     getBackup: async (key: string): Promise<any> => {
-        // Tenta Cloud primeiro como fonte da verdade
+        // Tenta Cloud primeiro (Fonte da verdade após atualização)
         const cloudData = await databaseService.getFromCloud(key);
-        if (cloudData) return cloudData;
+        if (cloudData) {
+            // Atualiza o local com o que veio da nuvem
+            databaseService.saveLocalOnly(key, cloudData);
+            return cloudData;
+        }
 
-        // Fallback para IndexedDB
+        // Fallback para IndexedDB (Se estiver offline ou sem nuvem)
         try {
             const db = await openDB();
             return new Promise((resolve) => {
@@ -145,6 +127,15 @@ export const databaseService = {
         } catch (e) {
             return null;
         }
+    },
+
+    // Apenas local para cache rápido
+    saveLocalOnly: async (key: string, data: any) => {
+        try {
+            const db = await openDB();
+            const tx = db.transaction(STORE_BACKUP, 'readwrite');
+            tx.objectStore(STORE_BACKUP).put({ key, data: JSON.parse(JSON.stringify(data)), timestamp: Date.now() });
+        } catch (e) {}
     },
 
     createSnapshot: async (name: string, data: any) => {

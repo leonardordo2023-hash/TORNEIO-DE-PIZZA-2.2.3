@@ -10,10 +10,9 @@ interface ChartProps {
   language: Language;
   pizzaOwners?: Record<number, string>; 
   triggerReveal?: boolean; 
-  onRevealComplete?: () => void; 
+  onRevealComplete?: (winnerData?: { id: string | number, score: number }) => void; 
 }
 
-// Helper to sum only confirmed votes based on category INCLUDING BONUS
 const getConfirmedSum = (pizza: PizzaData, category: 'salgada' | 'doce'): number => {
     let beautyScores, tasteScores, bonusScores;
     
@@ -30,12 +29,11 @@ const getConfirmedSum = (pizza: PizzaData, category: 'salgada' | 'doce'): number
     const confirmedVotes = pizza.confirmedVotes || {};
     
     let sum = 0;
-    // Iterate over beauty scores as base, check confirmation
     Object.keys(beautyScores).forEach(userId => {
         if (confirmedVotes[userId]) {
             sum += (beautyScores[userId] || 0);
             sum += (tasteScores[userId] || 0);
-            sum += (bonusScores[userId] || 0); // Include Bonus
+            sum += (bonusScores[userId] || 0);
         }
     });
     return sum;
@@ -44,37 +42,31 @@ const getConfirmedSum = (pizza: PizzaData, category: 'salgada' | 'doce'): number
 type RevealPhase = 'idle' | 'revealing' | 'weak_signal' | 'preparing' | 'countdown' | 'finished';
 
 export const RankingTable: React.FC<ChartProps> = ({ data, language, pizzaOwners, triggerReveal, onRevealComplete }) => {
-    const t = translations[language];
+    const t = translations[language].rankingPanel;
     
-    // --- ESTADOS DE APURAÇÃO ---
     const [showStartOverlay, setShowStartOverlay] = useState(false);
     const [phase, setPhase] = useState<RevealPhase>('idle');
     const [revealProgress, setRevealProgress] = useState(0); 
     const [countdownValue, setCountdownValue] = useState(3);
     
-    // Estados de Visualização da Lista
     const [showFullSalgada, setShowFullSalgada] = useState(false);
     const [showFullDoce, setShowFullDoce] = useState(false);
     
-    // Armazena as notas visuais (salgada e doce)
     const [displayedScores, setDisplayedScores] = useState<Record<string, { salgada: number, doce: number }>>({});
     
     const revealIntervalRef = useRef<any>(null);
     
-    // Referências para os elementos de Áudio
     const suspenseRef = useRef<HTMLAudioElement>(null);
     const staticRef = useRef<HTMLAudioElement>(null); 
     const beepRef = useRef<HTMLAudioElement>(null);   
     const cheerRef = useRef<HTMLAudioElement>(null);
 
-    // Efeito para exibir o overlay quando o gatilho é ativado
     useEffect(() => {
         if (triggerReveal && phase === 'idle' && !showStartOverlay) {
             setShowStartOverlay(true);
         }
     }, [triggerReveal]);
 
-    // Limpar estados ao desmontar
     useEffect(() => {
         return () => {
             if (revealIntervalRef.current) clearInterval(revealIntervalRef.current);
@@ -97,7 +89,6 @@ export const RankingTable: React.FC<ChartProps> = ({ data, language, pizzaOwners
             suspenseRef.current.play().catch(() => {});
         }
         setShowStartOverlay(false);
-        // Exibir listas completas durante o processamento inicial
         setShowFullSalgada(true);
         setShowFullDoce(true);
         startElectionMode();
@@ -111,7 +102,6 @@ export const RankingTable: React.FC<ChartProps> = ({ data, language, pizzaOwners
         data.forEach(p => initialScores[p.id] = { salgada: 0, doce: 0 });
         setDisplayedScores(initialScores);
 
-        // Fase 1: Encher a barra até 90% em 1,5 minutos (90.000 ms)
         const TOTAL_DURATION = 90000; 
         const UPDATE_INTERVAL = 100; 
         const TOTAL_STEPS = TOTAL_DURATION / UPDATE_INTERVAL;
@@ -121,14 +111,12 @@ export const RankingTable: React.FC<ChartProps> = ({ data, language, pizzaOwners
 
         revealIntervalRef.current = setInterval(() => {
             currentStep++;
-            // Progresso vai de 0 a 90%
             const progress = (currentStep / TOTAL_STEPS) * 90;
             setRevealProgress(progress);
 
             setDisplayedScores(prevScores => {
                 const newScores = { ...prevScores };
                 data.forEach(pizza => {
-                    // Notas visuais sobem proporcionalmente ao progresso (até 90% do valor real)
                     const realTotalSalgada = getConfirmedSum(pizza, 'salgada');
                     const realTotalDoce = getConfirmedSum(pizza, 'doce');
                     
@@ -158,7 +146,6 @@ export const RankingTable: React.FC<ChartProps> = ({ data, language, pizzaOwners
             staticRef.current.play().catch(() => {});
         }
 
-        // 5 segundos de tela preta / Rede Fraca
         setTimeout(() => {
             startPreparingPhase();
         }, 5000);
@@ -200,18 +187,22 @@ export const RankingTable: React.FC<ChartProps> = ({ data, language, pizzaOwners
 
     const finishElection = () => {
         setPhase('finished');
-        
-        // Esconde as listas completas para mostrar o visual especial (Top 3 e Campeã)
         setShowFullSalgada(false);
         setShowFullDoce(false);
 
         const finalScores: Record<string, { salgada: number, doce: number }> = {};
+        let winnerSalgada = { id: '', score: -1 };
+
         data.forEach(p => {
-            finalScores[p.id] = {
-                salgada: getConfirmedSum(p, 'salgada'),
-                doce: getConfirmedSum(p, 'doce')
-            };
+            const sScore = getConfirmedSum(p, 'salgada');
+            const dScore = getConfirmedSum(p, 'doce');
+            finalScores[p.id] = { salgada: sScore, doce: dScore };
+            
+            if (sScore > winnerSalgada.score) {
+                winnerSalgada = { id: String(p.id), score: sScore };
+            }
         });
+
         setDisplayedScores(finalScores);
         setRevealProgress(100);
 
@@ -220,7 +211,7 @@ export const RankingTable: React.FC<ChartProps> = ({ data, language, pizzaOwners
             cheerRef.current.play().catch(() => {});
         }
 
-        if (onRevealComplete) onRevealComplete();
+        if (onRevealComplete) onRevealComplete(winnerSalgada);
         
         setTimeout(() => fireWinnerConfetti(0.2, '#f97316'), 500); 
         setTimeout(() => fireWinnerConfetti(0.8, '#ec4899'), 1500); 
@@ -238,7 +229,6 @@ export const RankingTable: React.FC<ChartProps> = ({ data, language, pizzaOwners
         fire(0.35, { spread: 100, decay: 0.91, scalar: 0.8 });
     };
 
-    // Listas baseadas na fase atual
     const salgadaList = [...data].map(p => {
         if (phase !== 'finished') {
             return { ...p, score: displayedScores[p.id]?.salgada || 0 };
@@ -263,7 +253,7 @@ export const RankingTable: React.FC<ChartProps> = ({ data, language, pizzaOwners
         if (index === 0) return <Medal size={28} className="text-yellow-400 fill-yellow-400 drop-shadow-md animate-pulse" />;
         if (index === 1) return <Medal size={24} className="text-slate-300 fill-slate-300 drop-shadow-sm" />;
         if (index === 2) return <Medal size={24} className="text-amber-700 fill-amber-700 drop-shadow-sm" />;
-        return <span className="text-slate-400 font-bold w-6 text-center text-sm">{index + 1}º</span>;
+        return <span className="text-slate-400 font-bold w-6 text-center text-sm">{index + 1}{t.position}</span>;
     };
 
     const renderOverlayContent = () => {
@@ -271,8 +261,8 @@ export const RankingTable: React.FC<ChartProps> = ({ data, language, pizzaOwners
             return (
                 <div className="fixed inset-0 bg-black z-[300] flex flex-col items-center justify-center text-center p-4 animate-in fade-in duration-500 overflow-hidden">
                     <Signal size={120} className="text-red-600 mb-8 animate-pulse opacity-40" />
-                    <h3 className="text-4xl font-black text-red-500 uppercase tracking-[0.3em] mb-6">REDE FRACA</h3>
-                    <p className="text-white/40 font-mono text-xl uppercase tracking-widest animate-pulse">Reconectando ao servidor principal</p>
+                    <h3 className="text-4xl font-black text-red-500 uppercase tracking-[0.3em] mb-6">{t.weakSignal}</h3>
+                    <p className="text-white/40 font-mono text-xl uppercase tracking-widest animate-pulse">{t.reconnecting}</p>
                     <div className="mt-12 flex gap-3">
                         <div className="w-3 h-3 rounded-full bg-red-600 animate-bounce" style={{ animationDelay: '0ms' }}></div>
                         <div className="w-3 h-3 rounded-full bg-red-600 animate-bounce" style={{ animationDelay: '200ms' }}></div>
@@ -285,7 +275,7 @@ export const RankingTable: React.FC<ChartProps> = ({ data, language, pizzaOwners
             return (
                 <div className="fixed inset-0 bg-black z-[300] flex flex-col items-center justify-center text-center p-4 animate-in fade-in duration-300">
                     <h3 className="text-5xl md:text-7xl font-black text-white uppercase tracking-tighter animate-in zoom-in duration-500 select-none">
-                        ESTÃO<br/><span className="text-yellow-500">PREPARADOS?</span>
+                        {t.readyQuestion.split('?')[0]}<br/><span className="text-yellow-500">?</span>
                     </h3>
                 </div>
             );
@@ -318,14 +308,14 @@ export const RankingTable: React.FC<ChartProps> = ({ data, language, pizzaOwners
                                 <Volume2 size={48} className="animate-pulse" />
                             </div>
                         </div>
-                        <h1 className="text-3xl font-black text-white uppercase tracking-tight">Grande Final</h1>
-                        <p className="text-slate-300">Apuração Simultânea: <b>Salgada & Doce</b></p>
+                        <h1 className="text-3xl font-black text-white uppercase tracking-tight">{t.grandFinal}</h1>
+                        <p className="text-slate-300">{t.simultaneous}</p>
                         <button 
                             onClick={handleStartSequence}
                             className="w-full bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-black text-xl py-5 rounded-2xl shadow-lg hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3 border-4 border-indigo-400/30 cursor-pointer"
                         >
                             <PlayCircle size={32} fill="currentColor" className="text-white" />
-                            INICIAR TRANSMISSÃO
+                            {t.startBroadcast}
                         </button>
                     </div>
                 </div>
@@ -335,11 +325,11 @@ export const RankingTable: React.FC<ChartProps> = ({ data, language, pizzaOwners
                 <div className={`shrink-0 p-3 rounded-xl shadow-lg border flex flex-row items-center justify-between gap-4 transition-colors duration-500 ${phase === 'revealing' ? 'bg-indigo-900 border-indigo-700 text-white' : phase === 'finished' ? 'bg-slate-900 border-yellow-500 text-white' : 'bg-black border-slate-800 text-white'}`}>
                     <div className="flex items-center gap-3">
                         <Activity size={20} className={phase === 'revealing' ? "animate-pulse text-indigo-400" : "text-slate-400"} />
-                        <h2 className="text-lg font-black uppercase tracking-tight">Painel de Apuração</h2>
+                        <h2 className="text-lg font-black uppercase tracking-tight">{t.panelTitle}</h2>
                     </div>
                     {phase === 'revealing' && (
                         <div className="flex items-center gap-3 bg-black/30 px-3 py-1.5 rounded-full border border-white/10">
-                            <span className="text-[10px] font-bold text-indigo-300 uppercase">Processando</span>
+                            <span className="text-[10px] font-bold text-indigo-300 uppercase">{t.processing}</span>
                             <div className="w-24 h-1.5 bg-slate-700 rounded-full overflow-hidden">
                                 <div className="h-full bg-green-400 transition-all duration-300" style={{ width: `${revealProgress}%` }}></div>
                             </div>
@@ -353,12 +343,11 @@ export const RankingTable: React.FC<ChartProps> = ({ data, language, pizzaOwners
                 
                 {renderOverlayContent()}
 
-                {/* --- RANKING SALGADA --- */}
                 <div className={`rounded-2xl overflow-hidden border-2 shadow-xl transition-all duration-500 flex flex-col h-full relative ${phase === 'revealing' ? 'border-orange-500 ring-2 ring-orange-500/20' : 'border-slate-200 dark:border-slate-700'}`}>
                     <div className="bg-orange-600 px-4 py-3 text-white flex items-center justify-between shrink-0 relative z-20">
                         <div className="flex items-center gap-2">
                             <Pizza size={20} className="animate-spin-slow" />
-                            <h3 className="font-black text-base uppercase">Ranking Salgada</h3>
+                            <h3 className="font-black text-base uppercase">{t.salgadaTitle}</h3>
                         </div>
                     </div>
                     
@@ -366,7 +355,7 @@ export const RankingTable: React.FC<ChartProps> = ({ data, language, pizzaOwners
                         {salgadaList.length === 0 ? (
                             <div className="h-full flex flex-col items-center justify-center text-slate-400 p-8">
                                 <Pizza size={48} className="mb-2 opacity-20" />
-                                <p className="text-sm">Aguardando dados...</p>
+                                <p className="text-sm">{t.waitingData}</p>
                             </div>
                         ) : (
                             <>
@@ -391,7 +380,7 @@ export const RankingTable: React.FC<ChartProps> = ({ data, language, pizzaOwners
                                                             {isFirst ? <Trophy size={32} className="text-white" /> : <Medal size={16} className="text-white" />}
                                                         </div>
                                                         <h4 className={`font-bold uppercase tracking-widest leading-none mb-1 ${isFirst ? 'text-[10px] text-orange-600 dark:text-orange-400 mt-2' : 'text-[8px] text-slate-500 dark:text-slate-400'}`}>
-                                                            {index + 1}º Lugar
+                                                            {index + 1}{t.position}
                                                         </h4>
                                                         <div className={`${isFirst ? 'text-5xl mb-2' : 'text-2xl mb-1'} font-black text-slate-900 dark:text-white tracking-tighter`}>
                                                             #{pizza.id}
@@ -444,12 +433,11 @@ export const RankingTable: React.FC<ChartProps> = ({ data, language, pizzaOwners
                     </div>
                 </div>
 
-                {/* --- RANKING DOCE --- */}
                 <div className={`rounded-2xl overflow-hidden border-2 shadow-xl transition-all duration-500 flex flex-col h-full relative ${phase === 'revealing' ? 'border-pink-500 ring-2 ring-pink-500/20' : 'border-slate-200 dark:border-slate-700'}`}>
                     <div className="bg-pink-600 px-4 py-3 text-white flex items-center justify-between shrink-0 relative z-20">
                         <div className="flex items-center gap-2">
                             <Star size={20} className="animate-pulse" />
-                            <h3 className="font-black text-base uppercase">Ranking Doce</h3>
+                            <h3 className="font-black text-base uppercase">{t.doceTitle}</h3>
                         </div>
                     </div>
 
@@ -457,7 +445,7 @@ export const RankingTable: React.FC<ChartProps> = ({ data, language, pizzaOwners
                         {!doceWinner ? (
                             <div className="flex flex-col items-center justify-center text-slate-400 p-8 h-full">
                                 <Crown size={48} className="mb-2 opacity-20" />
-                                <p className="text-sm">Aguardando vencedor...</p>
+                                <p className="text-sm">{t.waitingData}</p>
                             </div>
                         ) : (
                             <>
@@ -467,7 +455,7 @@ export const RankingTable: React.FC<ChartProps> = ({ data, language, pizzaOwners
                                         <div className="mb-6 inline-block p-4 rounded-full bg-gradient-to-br from-yellow-300 to-amber-500 shadow-lg shadow-yellow-500/30 animate-bounce-slow">
                                             <Trophy size={56} className="text-white" />
                                         </div>
-                                        <h4 className="text-xs font-bold text-pink-600 dark:text-pink-400 uppercase tracking-widest mb-3">Grande Campeã Doce</h4>
+                                        <h4 className="text-xs font-bold text-pink-600 dark:text-pink-400 uppercase tracking-widest mb-3">{t.championDoce}</h4>
                                         <div className="text-5xl md:text-6xl font-black text-slate-900 dark:text-white mb-3 tracking-tighter">
                                             #{doceWinner.id}
                                         </div>
@@ -479,7 +467,7 @@ export const RankingTable: React.FC<ChartProps> = ({ data, language, pizzaOwners
                                             </div>
                                         )}
                                         <div className="bg-slate-100 dark:bg-slate-900/50 rounded-2xl p-4 border border-slate-200 dark:border-slate-700 inline-block min-w-[200px]">
-                                            <span className="block text-[10px] text-slate-500 uppercase font-bold mb-1">Pontuação Final</span>
+                                            <span className="block text-[10px] text-slate-500 uppercase font-bold mb-1">{t.finalScore}</span>
                                             <span className={`block text-4xl font-black ${phase !== 'finished' ? 'text-pink-600 animate-pulse' : 'text-slate-800 dark:text-white'}`}>
                                                 {doceWinner.score.toFixed(1)}
                                             </span>

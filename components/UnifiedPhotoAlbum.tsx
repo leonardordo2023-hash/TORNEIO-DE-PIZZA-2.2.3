@@ -32,43 +32,31 @@ export const UnifiedPhotoAlbum: React.FC<UnifiedPhotoAlbumProps> = ({
 }) => {
   const t = translations[language];
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [isZipping, setIsZipping] = useState(false);
   const [activeCategory, setActiveCategory] = useState<MediaCategory>('pizza');
   const [commentInput, setCommentInput] = useState<Record<string, string>>({});
   const [showReactions, setShowReactions] = useState<string | null>(null);
   
-  // View Mode State
   const [viewMode, setViewMode] = useState<'standard' | 'compact'>('standard');
-  
-  // Filter & Sort State
   const [filterType, setFilterType] = useState<'all' | 'image' | 'video'>('all');
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
-
-  // Animation State
   const [animatingHeart, setAnimatingHeart] = useState<string | null>(null);
-  
-  // Lightbox State
   const [selectedMediaId, setSelectedMediaId] = useState<string | null>(null);
   const [isZoomed, setIsZoomed] = useState(false);
-  
-  const [activeMenu, setActiveMenu] = useState<string | null>(null); // Comment ID
+  const [activeMenu, setActiveMenu] = useState<string | null>(null); 
   const [editingComment, setEditingComment] = useState<{id: string, text: string} | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Caption State
-  const [editingCaption, setEditingCaption] = useState<string | null>(null); // Media ID
+  const [editingCaption, setEditingCaption] = useState<string | null>(null); 
   const [captionText, setCaptionText] = useState('');
 
-  // Check if current user is admin
   const isAdmin = userId.toLowerCase() === '@leonardo';
 
-  // Filter ONLY items marked as hiddenFromFeed (which implies they were uploaded to Album)
   const allMedia = pizzas.flatMap(p => (p.media || [])
     .filter(m => m.hiddenFromFeed === true) 
     .map(m => ({ ...m, pizzaId: p.id }))
   );
   
-  // Apply Filtering and Sorting
   const filteredMedia = allMedia
     .filter(m => m.category === activeCategory)
     .filter(m => filterType === 'all' || m.type === filterType)
@@ -103,12 +91,10 @@ export const UnifiedPhotoAlbum: React.FC<UnifiedPhotoAlbumProps> = ({
   useEffect(() => {
       const handleKeyDown = (e: KeyboardEvent) => {
           if (!selectedMedia) return;
-          
           if (e.key === 'ArrowRight') handleNext();
           if (e.key === 'ArrowLeft') handlePrev();
           if (e.key === 'Escape') setSelectedMediaId(null);
       };
-
       window.addEventListener('keydown', handleKeyDown);
       return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedMedia, handleNext, handlePrev]);
@@ -129,10 +115,16 @@ export const UnifiedPhotoAlbum: React.FC<UnifiedPhotoAlbumProps> = ({
     const targetId = pizzas[0]?.id;
     if (!files || files.length === 0 || !targetId) return;
     setIsUploading(true);
+    setUploadProgress(0);
     try {
         const fileArray = Array.from(files) as File[];
-        await Promise.all(fileArray.map(async (file) => {
-            const { url, type } = await processMediaFile(file, 100);
+        for (let i = 0; i < fileArray.length; i++) {
+            const file = fileArray[i];
+            const { url, type } = await processMediaFile(file, 50, (percent) => {
+                // Progresso ponderado se houver múltiplos arquivos
+                const totalPercent = Math.round(((i / fileArray.length) * 100) + (percent / fileArray.length));
+                setUploadProgress(totalPercent);
+            });
             onAddMedia(targetId, { 
                 id: Math.random().toString(36).substring(2, 15), 
                 url, 
@@ -141,8 +133,14 @@ export const UnifiedPhotoAlbum: React.FC<UnifiedPhotoAlbumProps> = ({
                 date: Date.now(),
                 hiddenFromFeed: true
             });
-        }));
-    } catch (err) { alert("Erro ao processar: " + (err as Error).message); } finally { setIsUploading(false); if (fileInputRef.current) fileInputRef.current.value = ''; }
+        }
+    } catch (err) { 
+        alert(err instanceof Error ? err.message : "Erro ao processar mídia."); 
+    } finally { 
+        setIsUploading(false); 
+        setUploadProgress(0);
+        if (fileInputRef.current) fileInputRef.current.value = ''; 
+    }
   };
 
   const handleDownloadAll = async () => {
@@ -376,7 +374,8 @@ export const UnifiedPhotoAlbum: React.FC<UnifiedPhotoAlbumProps> = ({
                                 onKeyDown={(e) => e.key === 'Enter' && handleAddCommentAction(selectedMedia.id)}
                             />
                             <button onClick={() => handleAddCommentAction(selectedMedia.id)} className="p-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors">
-                                <Send size={16} />
+                                <span className="hidden sm:inline">Enviar</span>
+                                <Send size={16} className="sm:hidden" />
                             </button>
                         </div>
                     </div>
@@ -461,10 +460,18 @@ export const UnifiedPhotoAlbum: React.FC<UnifiedPhotoAlbumProps> = ({
       <div className="p-4 flex-1 flex flex-col bg-slate-50/30 dark:bg-slate-900/30">
         
         {isAdmin && (
-            <div className="mb-6">
+            <div className="mb-6 space-y-2">
                 <input type="file" accept="image/*,video/*" multiple className="hidden" ref={fileInputRef} onChange={handleFileChange} />
-                <button onClick={() => fileInputRef.current?.click()} disabled={isUploading} className="w-full flex items-center justify-center gap-2 py-4 text-white bg-slate-900 dark:bg-slate-700 rounded-xl text-base font-bold shadow-lg hover:scale-[1.01] transition-all disabled:opacity-70">
-                    {isUploading ? <Loader2 size={20} className="animate-spin" /> : <Camera size={20} />} {t.upload} (Admin)
+                <button onClick={() => fileInputRef.current?.click()} disabled={isUploading} className="w-full flex flex-col items-center justify-center gap-1 py-4 text-white bg-slate-900 dark:bg-slate-700 rounded-xl text-base font-bold shadow-lg hover:scale-[1.01] transition-all disabled:opacity-70">
+                    <div className="flex items-center gap-2">
+                        {isUploading ? <Loader2 size={20} className="animate-spin" /> : <Camera size={20} />} 
+                        {isUploading ? `Processando ${uploadProgress}%...` : `${t.upload} (Admin - Máx 50MB)`}
+                    </div>
+                    {isUploading && (
+                        <div className="w-[80%] h-1 bg-white/20 rounded-full mt-2 overflow-hidden">
+                            <div className="h-full bg-white transition-all duration-300" style={{ width: `${uploadProgress}%` }} />
+                        </div>
+                    )}
                 </button>
             </div>
         )}
