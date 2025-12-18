@@ -1,0 +1,107 @@
+
+<!DOCTYPE html>
+<html lang="en" translate="no">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="google" content="notranslate" />
+    <meta name="theme-color" content="#0f172a" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Pizza Tournament" />
+    <link rel="apple-touch-icon" href="./logo.png" />
+    <link rel="manifest" href="./manifest.json" />
+
+    <title>Torneio de Pizza</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            colors: {
+              slate: {
+                750: '#2d3748',
+                850: '#1a202c',
+                950: '#0f172a',
+              }
+            },
+            animation: {
+              'bounce-slow': 'bounce 3s infinite',
+              'pulse-fast': 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+              'wiggle': 'wiggle 1s ease-in-out infinite',
+              'float': 'float 6s ease-in-out infinite',
+              'float-delayed': 'float 6s ease-in-out 3s infinite',
+              'pulse-slow': 'pulse 6s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+              'gradient-slow': 'gradient-slow 15s ease infinite',
+              'sound-bar': 'sound-bar 0.8s ease-in-out infinite',
+              'sound-wave': 'sound-wave 1.5s ease-out infinite',
+            },
+            keyframes: {
+              wiggle: {
+                '0%, 100%': { transform: 'rotate(-3deg)' },
+                '50%': { transform: 'rotate(3deg)' },
+              },
+              float: {
+                '0%, 100%': { transform: 'translateY(0)' },
+                '50%': { transform: 'translateY(-20px)' },
+              },
+              'gradient-slow': {
+                '0%, 100%': { 'background-position': '0% 50%' },
+                '50%': { 'background-position': '100% 50%' },
+              },
+              'sound-bar': {
+                '0%, 100%': { transform: 'scaleY(0.4)', opacity: '0.5' },
+                '50%': { transform: 'scaleY(1.2)', opacity: '1' }
+              },
+              'sound-wave': {
+                '0%': { transform: 'scale(0.8)', opacity: '0.8' },
+                '100%': { transform: 'scale(2)', opacity: '0' }
+              }
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+      body {
+        overscroll-behavior-y: none;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .theme-baby-blue-animate { background: linear-gradient(-45deg, #e0f2fe, #f0f9ff, #dcfce7, #bae6fd); background-size: 400% 400%; animation: gradient-slow 15s ease infinite; }
+      .theme-pink-animate { background: linear-gradient(-45deg, #fdf2f8, #fce7f3, #fdf4ff, #fae8ff); background-size: 400% 400%; animation: gradient-slow 12s ease infinite; }
+      .theme-purple-animate { background: linear-gradient(-45deg, #f5f3ff, #ede9fe, #ddd6fe, #c4b5fd); background-size: 400% 400%; animation: gradient-slow 15s ease infinite; }
+      .theme-green-animate { background: linear-gradient(-45deg, #f0fdf4, #dcfce7, #bbf7d0, #86efac); background-size: 400% 400%; animation: gradient-slow 15s ease infinite; }
+      ::-webkit-scrollbar { width: 8px; height: 8px; }
+      ::-webkit-scrollbar-track { background: #f1f5f9; }
+      .dark ::-webkit-scrollbar-track { background: #1e293b; }
+      ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+      .dark ::-webkit-scrollbar-thumb { background: #475569; }
+      .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+      .pt-safe { padding-top: env(safe-area-inset-top); }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.2.0",
+    "react/": "https://esm.sh/react@18.2.0/",
+    "react-dom": "https://esm.sh/react-dom@18.2.0",
+    "react-dom/": "https://esm.sh/react-dom@18.2.0/",
+    "lucide-react": "https://esm.sh/lucide-react@0.460.0?deps=react@18.2.0,react-dom@18.2.0",
+    "recharts": "https://esm.sh/recharts@2.12.0?deps=react@18.2.0,react-dom@18.2.0",
+    "trystero": "https://esm.sh/trystero@0.22.0",
+    "trystero/mqtt": "https://esm.sh/trystero@0.22.0/mqtt",
+    "jszip": "https://esm.sh/jszip@3.10.1",
+    "@google/genai": "https://esm.sh/@google/genai",
+    "canvas-confetti": "https://esm.sh/canvas-confetti@1.9.2",
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js",
+    "trystero/": "https://esm.sh/trystero@^0.22.0/"
+  }
+}
+</script>
+</head>
+  <body class="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 transition-colors duration-300 notranslate">
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>

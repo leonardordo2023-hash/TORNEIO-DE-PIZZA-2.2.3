@@ -1,0 +1,35 @@
+
+{
+  "short_name": "PizzaCup",
+  "name": "Torneio de Pizza",
+  "icons": [
+    {
+      "src": "logo.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "logo.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "id": "./?source=pwa",
+  "start_url": "./",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "display": "standalone",
+  "orientation": "portrait",
+  "scope": "./",
+  "description": "App oficial para votação e gerenciamento do Torneio de Pizza.",
+  "categories": ["food", "social", "entertainment"],
+  "shortcuts": [
+    {
+      "name": "Fichas",
+      "url": "./",
+      "icons": [{ "src": "logo.png", "sizes": "192x192" }]
+    }
+  ]
+}
