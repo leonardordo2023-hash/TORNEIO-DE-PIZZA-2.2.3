@@ -96,11 +96,18 @@ export const PizzaCard: React.FC<PizzaCardProps> = ({ data, userId, isAdmin, onU
   const tasteScoresMap = isSalgada ? data.tasteScores : (data.tasteScoresDoce || {});
   const bonusScoresMap = isSalgada ? (data.bonusScores || {}) : (data.bonusScoresDoce || {});
 
-  const totalPointsVal = getSum(beautyScoresMap) + getSum(tasteScoresMap) + getSum(bonusScoresMap);
+  // Pontuação do usuário logado para este card
   const myBeauty = beautyScoresMap?.[userId] ?? null;
   const myTaste = tasteScoresMap?.[userId] ?? null;
   const myBonus = bonusScoresMap?.[userId] ?? 0;
   
+  const myTotalForThisCard = (myBeauty !== null && myBeauty !== -1 ? myBeauty : 0) + 
+                             (myTaste !== null && myTaste !== -1 ? myTaste : 0) + 
+                             (myBonus || 0);
+
+  // Pontuação global (Soma de todos) - Apenas para uso do Admin
+  const globalTotalPoints = getSum(beautyScoresMap) + getSum(tasteScoresMap) + getSum(bonusScoresMap);
+
   const isConfirmed = data.confirmedVotes?.[userId] === true;
   const hasMyVotes = (myBeauty !== null && myBeauty !== -1) && (myTaste !== null && myTaste !== -1);
 
@@ -119,6 +126,12 @@ export const PizzaCard: React.FC<PizzaCardProps> = ({ data, userId, isAdmin, onU
           onConfirm(data.id);
       }
   };
+
+  // Valor a ser exibido no quadrado preto
+  // Se for admin, mostra o total global. Se for jogador, mostra apenas o SEU voto convertido.
+  const displayVal = isAdmin ? globalTotalPoints : myTotalForThisCard;
+  const levelsGained = Math.floor(displayVal / 100);
+  const remainingPercent = (displayVal % 100).toFixed(1);
 
   return (
     <div className={`transition-all duration-300 transform ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
@@ -144,9 +157,16 @@ export const PizzaCard: React.FC<PizzaCardProps> = ({ data, userId, isAdmin, onU
                 >
                     <Star size={14} fill={myBonus === 1 ? "currentColor" : "none"} className={myBonus === 1 ? 'animate-pulse' : ''} />
                 </button>
-                {totalPointsVal > 0 && (
-                    <div className="px-2 py-1 bg-slate-900 dark:bg-slate-800 rounded-lg text-[10px] font-black text-white shadow-sm">
-                      {totalPointsVal.toFixed(1)}
+                {displayVal > 0 && (
+                    <div className="px-2 py-1 bg-slate-900 dark:bg-slate-800 rounded-lg font-black text-white shadow-sm flex flex-col items-center justify-center min-w-[40px] min-h-[32px] leading-none">
+                      {isAdmin ? (
+                          <span className="text-[10px]">{displayVal.toFixed(1)}</span>
+                      ) : (
+                          <>
+                              {levelsGained > 0 && <span className="text-[6px] text-indigo-400 uppercase mb-0.5">lvl +{levelsGained}</span>}
+                              <span className="text-[9px]">{remainingPercent}%</span>
+                          </>
+                      )}
                     </div>
                 )}
             </div>
@@ -183,6 +203,20 @@ export const PizzaCard: React.FC<PizzaCardProps> = ({ data, userId, isAdmin, onU
                 placeholder={t.globalNotes} 
             />
           </div>
+
+          {isAdmin && (
+             <div className="px-3 pb-3 flex justify-between items-center mt-auto">
+                <div className="flex -space-x-1.5 overflow-hidden">
+                    {Object.keys(data.confirmedVotes || {}).filter(uid => data.confirmedVotes?.[uid]).slice(0, 3).map((uid, i) => (
+                        <div key={i} className="inline-block h-4 w-4 rounded-full ring-2 ring-white dark:ring-slate-900 bg-slate-200 flex items-center justify-center text-[6px] font-black">{uid.charAt(1).toUpperCase()}</div>
+                    ))}
+                    {Object.keys(data.confirmedVotes || {}).filter(uid => data.confirmedVotes?.[uid]).length > 3 && (
+                        <div className="inline-block h-4 w-4 rounded-full ring-2 ring-white dark:ring-slate-900 bg-slate-100 flex items-center justify-center text-[5px] font-bold text-slate-400">+{Object.keys(data.confirmedVotes || {}).filter(uid => data.confirmedVotes?.[uid]).length - 3}</div>
+                    )}
+                </div>
+                <button onClick={() => onDelete(data.id)} className="p-1.5 text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={12} /></button>
+             </div>
+          )}
         </div>
     </div>
   );

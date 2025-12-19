@@ -1,5 +1,8 @@
 {
   "name": "TORNEIO DE PIZZA  2.3.0",
   "description": "Uma planilha digital de pontuação para competições de pizza. Avalie pizzas por Beleza e Sabor, visualize resultados e obtenha insights com IA.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
 }

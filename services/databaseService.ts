@@ -10,12 +10,14 @@ const STORE_SNAPSHOTS = 'app_snapshots';
 
 let isAppStateTableMissing = false;
 let isUsersTableMissing = false;
+let isMediaTableMissing = false;
 
 export const databaseService = {
     getCloudStatus: () => ({
-        isReady: !isAppStateTableMissing && !isUsersTableMissing,
+        isReady: !isAppStateTableMissing && !isUsersTableMissing && !isMediaTableMissing,
         appStateMissing: isAppStateTableMissing,
-        usersMissing: isUsersTableMissing
+        usersMissing: isUsersTableMissing,
+        mediaMissing: isMediaTableMissing
     }),
 
     init: async (): Promise<void> => {
@@ -104,6 +106,10 @@ export const databaseService = {
             const tx = db.transaction(STORE_MEDIA, 'readwrite');
             const store = tx.objectStore(STORE_MEDIA);
             store.put({ id, url, type, timestamp: Date.now() });
+            
+            // Tenta salvar na nuvem simultaneamente
+            databaseService.saveMediaToCloud(id, url, type);
+
             return new Promise((resolve) => {
                 tx.oncomplete = () => resolve(true);
                 tx.onerror = () => resolve(false);
@@ -111,6 +117,31 @@ export const databaseService = {
         } catch (e) {
             return false;
         }
+    },
+
+    saveMediaToCloud: async (id: string, url: string, type: string) => {
+        if (!navigator.onLine) return;
+        try {
+            const { error } = await supabase
+                .from('media_registry')
+                .upsert({ id, url, type }, { onConflict: 'id' });
+            if (error && error.code === '42P01') isMediaTableMissing = true;
+        } catch (e) {}
+    },
+
+    getMediaFromCloud: async (ids: string[]): Promise<Record<string, string>> => {
+        if (!navigator.onLine || ids.length === 0) return {};
+        try {
+            const { data, error } = await supabase
+                .from('media_registry')
+                .select('id, url')
+                .in('id', ids);
+            
+            if (error) return {};
+            const dict: Record<string, string> = {};
+            data?.forEach(item => { dict[item.id] = item.url; });
+            return dict;
+        } catch (e) { return {}; }
     },
 
     getAllMedia: async (): Promise<any[]> => {

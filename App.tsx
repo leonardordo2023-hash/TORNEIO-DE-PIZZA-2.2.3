@@ -26,7 +26,7 @@ import {
     initializeP2P, broadcastVote, broadcastGlobalNote, broadcastReset, broadcastDelete, broadcastAddPizza,
     broadcastMedia, broadcastDeleteMedia, broadcastDate, broadcastMediaUpdate,
     broadcastComment, broadcastCommentEdit, broadcastCommentDelete, broadcastReaction, broadcastCommentReaction,
-    broadcastReply, broadcastReplyReaction, broadcastPollVote, forceManualSync, broadcastConfirmVote,
+    broadcastReply, broadcastReplyEdit, broadcastReplyDelete, broadcastReplyReaction, broadcastPollVote, forceManualSync, broadcastConfirmVote,
     broadcastAppNotification, broadcastPresence, broadcastUserUpdate
 } from './services/p2pService';
 import { Trophy, Plus, User, Bell, Loader2, LogOut, Settings as SettingsIcon, ScrollText, BookOpen, Database, RefreshCw, MessageCircle, Newspaper, ImageIcon, Calendar, BarChart2, Grid, Gamepad2, X, Pizza, Cake, Check, Clock, Leaf, Sparkles, Wifi, WifiOff, Users, HelpCircle, Megaphone, Play, AlertTriangle, CloudOff, Lock, Unlock, Maximize, Smartphone, Monitor, MonitorSmartphone, PlayCircle, Trash2 } from 'lucide-react';
@@ -84,7 +84,7 @@ const App: React.FC = () => {
   const [cloudReady, setCloudReady] = useState(databaseService.getCloudStatus().isReady);
   const [isVotingReleased, setIsVotingReleased] = useState(false);
 
-  const [isNavManuallyHidden, setIsNavManuallyHidden] = useState(false);
+  const [isNavManuallyHidden, setIsNavNavManuallyHidden] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [hoveredTab, setHoveredTab] = useState<string | null>(null);
 
@@ -95,6 +95,7 @@ const App: React.FC = () => {
   const notificationMenuRef = useRef<HTMLDivElement>(null);
 
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => authService.getCurrentUser());
+  const isAdmin = currentUser?.nickname.toLowerCase() === '@leonardo';
 
   const isSyncingRef = useRef(false);
   const cloudSaveTimeouts = useRef<Record<string, number>>({});
@@ -149,7 +150,7 @@ const App: React.FC = () => {
       const handleGlobalDoubleClick = (e: MouseEvent) => {
           const target = e.target as HTMLElement;
           if (target.closest('button') || target.closest('input') || target.closest('select') || target.closest('textarea')) return;
-          setIsNavManuallyHidden(prev => !prev);
+          setIsNavNavManuallyHidden(prev => !prev);
       };
       window.addEventListener('dblclick', handleGlobalDoubleClick);
       return () => window.removeEventListener('dblclick', handleGlobalDoubleClick);
@@ -170,7 +171,7 @@ const App: React.FC = () => {
   const handleNotificationClick = (notif: AppNotification) => {
       setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, read: true } : n));
       setShowNotificationMenu(false);
-      if (notif.targetTab === 'dates') setShowCalendarModal(true);
+      if (notif.targetTab === 'dates' && isAdmin) setShowCalendarModal(true);
       else if (notif.targetTab === 'rules') setShowRulesModal(true);
       else if (notif.targetTab === 'history') setShowHistory(true);
       else if (notif.targetTab === 'dynamics') setActiveTab('dynamics');
@@ -239,7 +240,6 @@ const App: React.FC = () => {
   });
 
   const [isDbReady, setIsDbReady] = useState(false);
-  
   const debouncedCloudSave = (key: string, data: any) => {
       if (cloudSaveTimeouts.current[key]) clearTimeout(cloudSaveTimeouts.current[key]);
       cloudSaveTimeouts.current[key] = window.setTimeout(() => {
@@ -254,11 +254,81 @@ const App: React.FC = () => {
   const hydratePizzas = (slimPizzas: PizzaData[], mediaDict: Record<string, string>) => {
       return slimPizzas.map(p => ({
           ...p,
-          media: p.media?.map(m => ({
-              ...m,
-              url: m.url || mediaDict[m.id] || ""
-          }))
+          media: p.media?.map(m => ({ ...m, url: m.url || mediaDict[m.id] || "" }))
       }));
+  };
+
+  const calculateLegacyInteractions = (mediaId: string, social: SocialData) => {
+      const updates: Record<string, {legacyLikes: number, legacyComments: number}> = {};
+      const postLikes = social.likes[mediaId] || {};
+      Object.keys(postLikes).forEach(uId => {
+          if (!updates[uId]) updates[uId] = { legacyLikes: 0, legacyComments: 0 };
+          updates[uId].legacyLikes += 1;
+      });
+      const comments = social.comments[mediaId] || [];
+      const uniqueCommenters = new Set<string>();
+      comments.forEach(c => {
+          uniqueCommenters.add(c.user);
+          Object.keys(c.reactions || {}).forEach(uId => {
+              if (!updates[uId]) updates[uId] = { legacyLikes: 0, legacyComments: 0 };
+              updates[uId].legacyLikes += 1;
+          });
+          c.replies?.forEach(r => {
+              uniqueCommenters.add(r.user);
+              Object.keys(r.reactions || {}).forEach(uId => {
+                  if (!updates[uId]) updates[uId] = { legacyLikes: 0, legacyComments: 0 };
+                  updates[uId].legacyLikes += 1;
+              });
+          });
+      });
+      uniqueCommenters.forEach(uId => {
+          if (!updates[uId]) updates[uId] = { legacyLikes: 0, legacyComments: 0 };
+          updates[uId].legacyComments += 1;
+      });
+      return updates;
+  };
+
+  const applyUserLegacyUpdates = async (updates: Record<string, Partial<UserAccount>>, allUsers: UserAccount[]) => {
+      for (const [nick, upds] of Object.entries(updates)) {
+          const user = allUsers.find(u => u.nickname === nick);
+          if (user) {
+              const newUser = await authService.updateUser(nick, {
+                  legacyLikes: (user.legacyLikes || 0) + (upds.legacyLikes || 0),
+                  legacyComments: (user.legacyComments || 0) + (upds.legacyComments || 0)
+              });
+              broadcastUserUpdate(newUser);
+          }
+      }
+  };
+
+  const runAutoCleanup = async (currentPizzas: PizzaData[], currentSocial: SocialData) => {
+      if (!isAdmin || isSyncingRef.current) return;
+      const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
+      const now = Date.now();
+      let hasChanges = false;
+      const updatedPizzas = [...currentPizzas];
+      const updatedSocial = { ...currentSocial };
+      const allUsers = authService.getUsers();
+      const userUpdates: Record<string, Partial<UserAccount>> = {};
+      updatedPizzas.forEach((pizza, pIdx) => {
+          if (!pizza.media) return;
+          const validMedia: MediaItem[] = [];
+          pizza.media.forEach(item => {
+              if (now - item.date > NINETY_DAYS_MS) {
+                  hasChanges = true;
+                  const interactions = calculateLegacyInteractions(item.id, updatedSocial);
+                  Object.entries(interactions).forEach(([uId, pts]) => {
+                      if (!userUpdates[uId]) userUpdates[uId] = { legacyLikes: 0, legacyComments: 0 };
+                      userUpdates[uId].legacyLikes = (userUpdates[uId].legacyLikes || 0) + pts.legacyLikes;
+                      userUpdates[uId].legacyComments = (userUpdates[uId].legacyComments || 0) + pts.legacyComments;
+                  });
+                  delete updatedSocial.likes[item.id];
+                  delete updatedSocial.comments[item.id];
+              } else { validMedia.push(item); }
+          });
+          updatedPizzas[pIdx] = { ...pizza, media: validMedia };
+      });
+      if (hasChanges) { await applyUserLegacyUpdates(userUpdates, allUsers); syncAndBroadcast(updatedPizzas, updatedSocial); }
   };
 
   useEffect(() => {
@@ -268,48 +338,33 @@ const App: React.FC = () => {
         const mediaDict: Record<string, string> = {};
         allArchivedMedia.forEach(m => { mediaDict[m.id] = m.url; });
         isSyncingRef.current = true;
-        
         let cloudPizzas = await databaseService.getFromCloud('pizzas');
         const cloudSocial = await databaseService.getFromCloud('social_data');
         const votingState = await databaseService.getFromCloud('voting_released');
-        
         if (cloudPizzas && Array.isArray(cloudPizzas)) {
-            cloudPizzas = hydratePizzas(cloudPizzas, mediaDict);
-            setPizzas(cloudPizzas);
+            const missingMediaIds: string[] = [];
+            cloudPizzas.forEach((p: PizzaData) => { p.media?.forEach(m => { if (!m.url && !mediaDict[m.id]) missingMediaIds.push(m.id); }); });
+            if (missingMediaIds.length > 0) { const remoteMedia = await databaseService.getMediaFromCloud(missingMediaIds); Object.assign(mediaDict, remoteMedia); }
+            cloudPizzas = hydratePizzas(cloudPizzas, mediaDict); setPizzas(cloudPizzas);
             securityService.safeSetItem('pizzaGradeDataV2', JSON.stringify(securityService.slimPizzas(cloudPizzas)));
-        } else {
-            setPizzas(prev => hydratePizzas(prev, mediaDict));
-        }
-        
-        if (cloudSocial) {
-            setSocialData(cloudSocial);
-            securityService.safeSetItem('pizza_social_data', JSON.stringify(cloudSocial));
-        }
-        
+        } else { setPizzas(prev => hydratePizzas(prev, mediaDict)); }
+        if (cloudSocial) { setSocialData(cloudSocial); securityService.safeSetItem('pizza_social_data', JSON.stringify(cloudSocial)); }
         if (votingState !== null) setIsVotingReleased(!!votingState);
-        setIsDbReady(true);
-        isSyncingRef.current = false;
-        setCloudReady(databaseService.getCloudStatus().isReady);
-        
+        setIsDbReady(true); isSyncingRef.current = false; setCloudReady(databaseService.getCloudStatus().isReady);
+        if (isAdmin) setTimeout(() => runAutoCleanup(cloudPizzas || pizzas, cloudSocial || socialData), 5000);
         const channel = supabase.channel('app_global_sync')
             .on('broadcast', { event: 'notification' }, (payload) => {
-                const p = payload.payload;
-                const cleanMsg = p.message.replace(/\*\*(.*?)\*\*/g, '$1').replace(/\*/g, '');
-                addAppNotification(p.title, p.message, p.targetTab, p.id);
-                triggerGlobalNotification(p.title + ": " + cleanMsg);
-                triggerSystemNotification(p.title, cleanMsg);
+                const p = payload.payload; const cleanMsg = p.message.replace(/\*\*(.*?)\*\*/g, '$1').replace(/\*/g, '');
+                addAppNotification(p.title, p.message, p.targetTab, p.id); triggerGlobalNotification(p.title + ": " + cleanMsg); triggerSystemNotification(p.title, cleanMsg);
             })
             .on('broadcast', { event: 'full_sync' }, (payload) => {
                 const { pizzas: incoming, socialData: incomingSocial, votingReleased: incomingVR } = payload.payload;
-                isSyncingRef.current = true;
-                const hydratedIncoming = hydratePizzas(incoming, mediaDict);
-                setPizzas(hydratedIncoming);
-                setSocialData(incomingSocial);
+                isSyncingRef.current = true; const hydratedIncoming = hydratePizzas(incoming, mediaDict);
+                setPizzas(hydratedIncoming); setSocialData(incomingSocial);
                 if (incomingVR !== undefined) setIsVotingReleased(!!incomingVR);
                 setTimeout(() => { isSyncingRef.current = false; }, 500);
             })
             .subscribe();
-
         initializeP2P({
             onVoteUpdate: (p) => setPizzas(prev => prev.map(pz => pz.id === p.pizzaId ? { ...pz, [p.field]: p.value === -1 ? (()=>{const s={...pz[p.field]};delete s[p.userId];return s})() : { ...pz[p.field], [p.userId]: p.value } } : pz)),
             onVoteConfirm: (p) => setPizzas(prev => prev.map(pz => pz.id === p.pizzaId ? { ...pz, confirmedVotes: { ...pz.confirmedVotes, [p.userId]: p.status } } : pz)),
@@ -327,22 +382,19 @@ const App: React.FC = () => {
             onCommentAdd: (p) => setSocialData(prev => ({ ...prev, comments: { ...prev.comments, [p.mediaId]: [...(socialData.comments[p.mediaId] || []), p.comment] } })),
             onCommentEdit: (p) => setSocialData(prev => ({ ...prev, comments: { ...prev.comments, [p.mediaId]: (prev.comments[p.mediaId] || []).map(c => c.id === p.commentId ? { ...c, text: p.newText } : c) } })),
             onCommentDelete: (p) => setSocialData(prev => ({ ...prev, comments: { ...prev.comments, [p.mediaId]: (prev.comments[p.mediaId] || []).filter(c => c.id !== p.commentId) } })),
-            onReactionUpdate: (p) => setSocialData(prev => { const curr = prev.likes[p.mediaId] || {}; return { ...prev, likes: { ...prev.likes, [p.mediaId]: { ...curr, [p.userId]: p.emoji } } }; }),
+            // Fixed: Use p.userId and p.emoji from payload to avoid 'emoji' not found and incorrectly scoped 'userId'
+            onReactionUpdate: (p) => setSocialData(prev => { const curr = prev.likes[p.mediaId] || {}; return { ...prev, likes: { ...prev.likes, [p.mediaId]: { ...curr, [p.userId]: curr[p.userId] === p.emoji ? undefined : p.emoji } as any } }; }),
             onCommentReactionUpdate: (p) => setSocialData(prev => ({ ...prev, comments: { ...prev.comments, [p.mediaId]: (prev.comments[p.mediaId] || []).map(c => c.id === p.commentId ? { ...c, reactions: { ...c.reactions, [p.userId]: p.emoji } } : c) } })),
             onReplyAdd: (p) => setSocialData(prev => ({ ...prev, comments: { ...prev.comments, [p.mediaId]: (prev.comments[p.mediaId] || []).map(c => c.id === p.commentId ? { ...c, replies: [...(c.replies || []), p.reply] } : c) } })),
+            onReplyEdit: (p) => setSocialData(prev => ({ ...prev, comments: { ...prev.comments, [p.mediaId]: (prev.comments[p.mediaId] || []).map(c => c.id === p.commentId ? { ...c, replies: (c.replies || []).map(r => r.id === p.replyId ? { ...r, text: p.newText } : r) } : c) } })),
+            onReplyDelete: (p) => setSocialData(prev => ({ ...prev, comments: { ...prev.comments, [p.mediaId]: (prev.comments[p.mediaId] || []).map(c => c.id === p.commentId ? { ...c, replies: (c.replies || []).filter(r => r.id !== p.replyId) } : c) } })),
             onReplyReactionUpdate: (p) => setSocialData(prev => ({ ...prev, comments: { ...prev.comments, [p.mediaId]: (prev.comments[p.mediaId] || []).map(c => c.id === p.commentId ? { ...c, replies: (c.replies || []).map(r => r.id === p.replyId ? { ...r, reactions: { ...r.reactions, [p.userId]: p.emoji } } : r) } : c) } })),
             onResetUserXP: (p) => { if (p.targetNickname === 'ALL' || p.targetNickname === currentUserRef.current?.nickname) { window.location.reload(); } },
             onUserUpdate: (p) => authService.mergeUsers([p]),
-            onAppNotification: (p) => { 
-                const cleanMsg = p.message.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>').replace(/\*/g, ''); 
-                addAppNotification(p.title, p.message, p.targetTab as any); 
-                triggerGlobalNotification(p.title + ": " + cleanMsg); 
-                triggerSystemNotification(p.title, p.message); 
-            },
+            onAppNotification: (p) => { const cleanMsg = p.message.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>').replace(/\*/g, ''); addAppNotification(p.title, p.message, p.targetTab as any); triggerGlobalNotification(p.title + ": " + cleanMsg); triggerSystemNotification(p.title, cleanMsg); },
             onPresence: (p, pid) => setOnlineNicknames(prev => ({ ...prev, [pid]: { nickname: p.nickname, lastSeen: Date.now() } })),
             getCurrentState: () => ({ pizzas: pizzasRef.current, socialData: socialDataRef.current, users: authService.getUsers() })
         });
-        
         return () => { supabase.removeChannel(channel); };
     };
     initCloud();
@@ -355,65 +407,39 @@ const App: React.FC = () => {
   const [showProfilePage, setShowProfilePage] = useState(false);
   const [userId, setUserId] = useState('');
   useEffect(() => { setUserId(currentUser?.nickname || ''); }, [currentUser]);
-  const isAdmin = currentUser?.nickname.toLowerCase() === '@leonardo';
 
   const handleLoginSuccess = (user: UserAccount) => { setCurrentUser(user); setIsLevelInitialized(false); setActiveTab('news'); };
   const handleUpdateUser = (updated: UserAccount) => setCurrentUser(updated);
   const handleLogout = () => { authService.logout(); setCurrentUser(null); setIsLevelInitialized(false); setActiveTab('news'); };
 
   useEffect(() => {
-    if (isDbReady && !isSyncingRef.current) {
-        debouncedCloudSave('social_data', socialData);
-        databaseService.saveBackup('social_data', socialData);
-        securityService.safeSetItem('pizza_social_data', JSON.stringify(securityService.deepClean(socialData)));
-    }
+    if (isDbReady && !isSyncingRef.current) { debouncedCloudSave('social_data', socialData); databaseService.saveBackup('social_data', socialData); securityService.safeSetItem('pizza_social_data', JSON.stringify(securityService.deepClean(socialData))); }
   }, [socialData, isDbReady]);
 
   const [activeTab, setActiveTab] = useState<'news' | 'avisos' | 'rules' | 'grid_salgada' | 'grid_doce' | 'charts' | 'album' | 'calendar' | 'history' | 'dynamics'>('news');
   const [gridSort, setGridSort] = useState<'asc' | 'desc' | 'rank'>('asc');
-  const pizzasRef = useRef(pizzas);
-  const socialDataRef = useRef(socialData);
-  const currentUserRef = useRef<UserAccount | null>(currentUser);
-
+  const pizzasRef = useRef(pizzas); const socialDataRef = useRef(socialData); const currentUserRef = useRef<UserAccount | null>(currentUser);
   useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
   
-  const triggerGlobalNotification = (message: string) => {
-      if (showSettingsModal) return;
-      setToastMessage(message);
-      try { const audio = new Audio('https://notificationsounds.com/storage/sounds/file-sounds-1150-pristine.mp3'); audio.volume = 0.4; audio.play().catch(() => {}); } catch {}
-      setTimeout(() => setToastMessage(null), 4000);
-  };
+  const triggerGlobalNotification = (message: string) => { if (showSettingsModal) return; setToastMessage(message); try { const audio = new Audio('https://notificationsounds.com/storage/sounds/file-sounds-1150-pristine.mp3'); audio.volume = 0.4; audio.play().catch(() => {}); } catch {} setTimeout(() => setToastMessage(null), 4000); };
 
   useEffect(() => {
     pizzasRef.current = pizzas;
-    if (isDbReady && !isSyncingRef.current) {
-        debouncedCloudSave('pizzas', pizzas);
-        databaseService.saveBackup('pizzas', pizzas);
-        securityService.safeSetItem('pizzaGradeDataV2', JSON.stringify(securityService.slimPizzas(pizzas)));
-    }
+    if (isDbReady && !isSyncingRef.current) { debouncedCloudSave('pizzas', pizzas); databaseService.saveBackup('pizzas', pizzas); securityService.safeSetItem('pizzaGradeDataV2', JSON.stringify(securityService.slimPizzas(pizzas))); }
   }, [pizzas, isDbReady]);
 
   const [isLevelInitialized, setIsLevelInitialized] = useState(false);
   useEffect(() => {
-      if (!currentUser) return;
-      const stats = calculateUserLevel(currentUser, pizzas, socialData, PIZZA_OWNERS);
+      if (!currentUser) return; const stats = calculateUserLevel(currentUser, pizzas, socialData, PIZZA_OWNERS);
       if (!isLevelInitialized) { previousLevelRef.current = stats.level; setIsLevelInitialized(true); } 
       else if (stats.level > previousLevelRef.current) { setLevelUpLevel(stats.level); setShowLevelUpModal(true); previousLevelRef.current = stats.level; }
   }, [pizzas, socialData, currentUser, isLevelInitialized]);
 
-  const handleNavClick = (tabId: string) => {
-      setActiveTab(tabId as any);
-      if (tabId === 'calendar') setShowCalendarModal(true);
-      if (tabId === 'history') setShowHistory(true);
-      if (tabId === 'grid_salgada') setGridMode('salgada');
-      if (tabId === 'grid_doce') setGridMode('doce');
-  };
+  const handleNavClick = (tabId: string) => { if ((tabId === 'calendar' || tabId === 'charts') && !isAdmin) return; setActiveTab(tabId as any); if (tabId === 'calendar') setShowCalendarModal(true); if (tabId === 'history') setShowHistory(true); if (tabId === 'grid_salgada') setGridMode('salgada'); if (tabId === 'grid_doce') setGridMode('doce'); };
 
   const sortedGridPizzas = useMemo(() => {
-      const sorted = [...pizzas];
-      const sortNumeric = (a: PizzaData, b: PizzaData) => parseFloat(String(a.id)) - parseFloat(String(b.id));
-      if (gridSort === 'asc') return sorted.sort(sortNumeric);
-      if (gridSort === 'desc') return sorted.sort((a, b) => sortNumeric(b, a));
+      const sorted = [...pizzas]; const sortNumeric = (a: PizzaData, b: PizzaData) => parseFloat(String(a.id)) - parseFloat(String(b.id));
+      if (gridSort === 'asc') return sorted.sort(sortNumeric); if (gridSort === 'desc') return sorted.sort((a, b) => sortNumeric(b, a));
       return sorted.sort((a, b) => {
           const scoreA = gridMode === 'salgada' ? getSum(a.beautyScores) + getSum(a.tasteScores) : getSum(a.beautyScoresDoce) + getSum(a.tasteScoresDoce);
           const scoreB = gridMode === 'salgada' ? getSum(b.beautyScores) + getSum(b.tasteScores) : getSum(b.beautyScoresDoce) + getSum(b.tasteScoresDoce);
@@ -423,33 +449,25 @@ const App: React.FC = () => {
 
   const rankMap = useMemo(() => {
     const stats = pizzas.map(p => ({ id: p.id, score: gridMode === 'salgada' ? getSum(p.beautyScores) + getSum(p.tasteScores) : getSum(p.beautyScoresDoce) + getSum(p.tasteScoresDoce) })).filter(p => p.score > 0).sort((a, b) => b.score - a.score);
-    const map: Record<string, number> = {};
-    stats.forEach((s, idx) => map[String(s.id)] = idx + 1);
-    return map;
+    const map: Record<string, number> = {}; stats.forEach((s, idx) => map[String(s.id)] = idx + 1); return map;
   }, [pizzas, gridMode]);
 
   const syncAndBroadcast = (updatedPizzas: PizzaData[], updatedSocial?: SocialData, updatedVR?: boolean) => {
-      setPizzas(updatedPizzas);
-      if (updatedSocial) setSocialData(updatedSocial);
+      setPizzas(updatedPizzas); if (updatedSocial) setSocialData(updatedSocial);
       if (updatedVR !== undefined) { setIsVotingReleased(updatedVR); databaseService.saveToCloud('voting_released', updatedVR); }
       supabase.channel('app_global_sync').send({ type: 'broadcast', event: 'full_sync', payload: { pizzas: updatedPizzas, socialData: updatedSocial || socialData, votingReleased: updatedVR !== undefined ? updatedVR : isVotingReleased } });
-      databaseService.saveBackup('pizzas', updatedPizzas);
-      if (updatedSocial) databaseService.saveBackup('social_data', updatedSocial);
+      databaseService.saveBackup('pizzas', updatedPizzas); if (updatedSocial) databaseService.saveBackup('social_data', updatedSocial);
   };
 
   const handleUpdateScore = (id: any, field: any, value: any) => { 
       const updated = pizzas.map(p => p.id === id ? { ...p, [field]: value === -1 ? (()=>{const s={...p[field]};delete s[userId];return s})() : { ...p[field], [userId]: value }, confirmedVotes: (()=>{const c={...p.confirmedVotes};delete c[userId];return c})() } : p);
-      syncAndBroadcast(updated);
-      broadcastVote({ pizzaId: id, userId, field, value }); 
+      syncAndBroadcast(updated); broadcastVote({ pizzaId: id, userId, field, value }); 
   };
 
   const handleConfirmVote = (id: any) => { 
       const currentlyConfirmed = pizzas.find(p => p.id === id)?.confirmedVotes?.[userId];
-      const newState = !currentlyConfirmed;
-      const updated = pizzas.map(p => p.id === id ? { ...p, confirmedVotes: { ...p.confirmedVotes, [userId]: newState } } : p);
-      syncAndBroadcast(updated);
-      broadcastConfirmVote({ pizzaId: id, userId, status: newState }); 
-      if (newState) triggerGlobalNotification("Voto Confirmado na Pizza #" + id);
+      const newState = !currentlyConfirmed; const updated = pizzas.map(p => p.id === id ? { ...p, confirmedVotes: { ...p.confirmedVotes, [userId]: newState } } : p);
+      syncAndBroadcast(updated); broadcastConfirmVote({ pizzaId: id, userId, status: newState }); if (newState) triggerGlobalNotification("Voto Confirmado na Pizza #" + id);
   };
 
   const handleAdminClearTable = async () => {
@@ -457,8 +475,7 @@ const App: React.FC = () => {
       if (confirm("ADMIN: Deseja LIMPAR TODAS as notas? XP e Nível serão preservados.")) {
           if (confirm("Confirmar limpeza total?")) {
               try {
-                  const allUsers = authService.getUsers();
-                  const updatedPizzas = pizzas.map(p => ({ ...p, beautyScores: {}, tasteScores: {}, beautyScoresDoce: {}, tasteScoresDoce: {}, confirmedVotes: {} }));
+                  const allUsers = authService.getUsers(); const updatedPizzas = pizzas.map(p => ({ ...p, beautyScores: {}, tasteScores: {}, beautyScoresDoce: {}, tasteScoresDoce: {}, confirmedVotes: {} }));
                   for (const user of allUsers) {
                       const currentStats = calculateUserLevel(user, pizzas, socialData, PIZZA_OWNERS);
                       const xpToPreserve = (currentStats.rawProgress - (typeof user.xpOffset === 'number' ? user.xpOffset : 0));
@@ -468,114 +485,69 @@ const App: React.FC = () => {
                           broadcastUserUpdate(updatedUser);
                       }
                   }
-                  syncAndBroadcast(updatedPizzas);
-                  alert("Planilha limpa com sucesso!");
+                  syncAndBroadcast(updatedPizzas); alert("Planilha limpa com sucesso!");
               } catch (e) { alert("Erro ao realizar limpeza."); }
           }
       }
   };
 
   const handleUpdateNote = (id: any, note: string) => setPizzas(prev => prev.map(p => p.id === id ? { ...p, userNotes: { ...p.userNotes, [userId]: note } } : p));
-  const handleUpdateNoteGlobal = (id: any, note: string) => { 
-      const updated = pizzas.map(p => p.id === id ? { ...p, notes: note } : p);
-      syncAndBroadcast(updated);
-      broadcastGlobalNote({ pizzaId: id, note }); 
-  };
+  const handleUpdateNoteGlobal = (id: any, note: string) => { const updated = pizzas.map(p => p.id === id ? { ...p, notes: note } : p); syncAndBroadcast(updated); broadcastGlobalNote({ pizzaId: id, note }); };
   
   const handleAddMedia = (id: any, item: MediaItem) => { 
     if (String(id) === '22') item.hiddenFromFeed = true;
     const updated = pizzas.map(p => p.id === id ? { ...p, media: [...(p.media || []), item] } : p);
-    syncAndBroadcast(updated);
-    if(isDbReady) databaseService.archiveMedia(item.id, item.url, item.type); 
-    broadcastMedia({ pizzaId: id, mediaItem: item }); 
+    syncAndBroadcast(updated); if(isDbReady) databaseService.archiveMedia(item.id, item.url, item.type); broadcastMedia({ pizzaId: id, mediaItem: item }); 
     const section = item.hiddenFromFeed ? 'album' : (item.type === 'poll' ? 'avisos' : 'news');
     if (String(id) === '22') return;
     const notifId = Math.random().toString(36).substring(2, 9);
     const payload = { id: notifId, title: item.type === 'poll' ? 'Novo Aviso ⚠️' : 'Nova Notícia 🍕', message: item.caption || 'Confira o novo conteúdo postado!', targetTab: section };
     supabase.channel('app_global_sync').send({ type: 'broadcast', event: 'notification', payload });
-    broadcastAppNotification(payload as any);
-    addAppNotification(payload.title, payload.message, section as any, notifId);
-    triggerSystemNotification(payload.title, payload.message);
+    broadcastAppNotification(payload as any); addAppNotification(payload.title, payload.message, section as any, notifId); triggerSystemNotification(payload.title, payload.message);
   };
 
-  const handleUpdateCaption = (id: any, mediaId: string, caption: string) => { 
-      const updated = pizzas.map(p => p.id === id ? { ...p, media: p.media?.map(m => m.id === mediaId ? { ...m, caption } : m) } : p);
-      syncAndBroadcast(updated);
-      broadcastMediaUpdate({ pizzaId: id, mediaId, caption }); 
-  };
-
-  const handleDeleteMedia = (id: any, mediaId: string) => { 
-      const updated = pizzas.map(p => p.id === id ? { ...p, media: p.media?.filter(m => m.id !== mediaId) } : p);
-      syncAndBroadcast(updated);
-      broadcastDeleteMedia({ pizzaId: id, mediaId }); 
-  };
-
-  const handleAddComment = (mediaId: string, text: string) => { 
-      const c: Comment = { id: Math.random().toString(36).substring(2, 15), user: currentUser?.nickname || 'Juiz', text, date: new Date().toISOString(), reactions: {}, replies: [] }; 
-      const updatedSocial = { ...socialData, comments: { ...socialData.comments, [mediaId]: [...(socialData.comments[mediaId] || []), c] } };
-      syncAndBroadcast(pizzas, updatedSocial);
-      broadcastComment({ mediaId, comment: c }); 
-  };
-
-  const handleMainReaction = (mediaId: string, emoji: string) => { 
-      const curr = socialData.likes[mediaId] || {}; 
-      const updatedSocial = { ...socialData, likes: { ...socialData.likes, [mediaId]: { ...curr, [userId]: curr[userId] === emoji ? undefined : emoji } as any } }; 
-      syncAndBroadcast(pizzas, updatedSocial);
-      broadcastReaction({ mediaId, userId, emoji }); 
-  };
-
-  const handlePollVote = (pId: any, mId: any, opts: any) => { 
-      const updated = pizzas.map(p => p.id === pId ? { ...p, media: p.media?.map(m => m.id === mId ? { ...m, poll: { ...m.poll!, votes: { ...m.poll!.votes, [userId]: opts } } } : m) } : p);
-      syncAndBroadcast(updated);
-      broadcastPollVote({ pizzaId: pId, mediaId: mId, userId, selectedOptions: opts }); 
-  };
-
+  const handleUpdateCaption = (id: any, mediaId: string, caption: string) => { const updated = pizzas.map(p => p.id === id ? { ...p, media: p.media?.map(m => m.id === mediaId ? { ...m, caption } : m) } : p); syncAndBroadcast(updated); broadcastMediaUpdate({ pizzaId: id, mediaId, caption }); };
+  const handleDeleteMedia = async (id: any, mediaId: string) => { if (!isAdmin) return; const allUsers = authService.getUsers(); const updatedSocial = { ...socialData }; const interactions = calculateLegacyInteractions(mediaId, updatedSocial); await applyUserLegacyUpdates(interactions, allUsers); delete updatedSocial.likes[mediaId]; delete updatedSocial.comments[mediaId]; const updatedPizzas = pizzas.map(p => p.id === id ? { ...p, media: p.media?.filter(m => m.id !== mediaId) } : p); syncAndBroadcast(updatedPizzas, updatedSocial); broadcastDeleteMedia({ pizzaId: id, mediaId }); };
+  const handleAddComment = (mediaId: string, text: string) => { const c: Comment = { id: Math.random().toString(36).substring(2, 15), user: currentUser?.nickname || 'Juiz', text, date: new Date().toISOString(), reactions: {}, replies: [] }; const updatedSocial = { ...socialData, comments: { ...socialData.comments, [mediaId]: [...(socialData.comments[mediaId] || []), c] } }; syncAndBroadcast(pizzas, updatedSocial); broadcastComment({ mediaId, comment: c }); };
+  const handleMainReaction = (mediaId: string, emoji: string) => { const curr = socialData.likes[mediaId] || {}; const updatedSocial = { ...socialData, likes: { ...socialData.likes, [mediaId]: { ...curr, [userId]: curr[userId] === emoji ? undefined : emoji } as any } }; syncAndBroadcast(pizzas, updatedSocial); broadcastReaction({ mediaId, userId, emoji }); };
+  const handlePollVote = (pId: any, mId: any, opts: any) => { const updated = pizzas.map(p => p.id === pId ? { ...p, media: p.media?.map(m => m.id === mId ? { ...m, poll: { ...m.poll!, votes: { ...m.poll!.votes, [userId]: opts } } } : m) } : p); syncAndBroadcast(updated); broadcastPollVote({ pizzaId: pId, mediaId: mId, userId, selectedOptions: opts }); };
   const handleUpdateDate = (id: number | string, date: string) => { const updated = pizzas.map(p => p.id === id ? { ...p, scheduledDate: date } : p); syncAndBroadcast(updated); broadcastDate({ pizzaId: id, date }); };
   const handleDeletePizza = (id: number | string) => { if (window.confirm(t.deleteConfirm)) { const updated = pizzas.filter(p => p.id !== id); syncAndBroadcast(updated); broadcastDelete(id); } };
   const handleEditComment = (mediaId: string, commentId: string, newText: string) => { const updatedComments = (socialData.comments[mediaId] || []).map(c => c.id === commentId ? { ...c, text: newText } : c); const updatedSocial = { ...socialData, comments: { ...socialData.comments, [mediaId]: updatedComments } }; syncAndBroadcast(pizzas, updatedSocial); broadcastCommentEdit({ mediaId, commentId, newText }); };
   const handleDeleteComment = (mediaId: string, commentId: string) => { const updatedComments = (socialData.comments[mediaId] || []).filter(c => c.id !== commentId); const updatedSocial = { ...socialData, comments: { ...socialData.comments, [mediaId]: updatedComments } }; syncAndBroadcast(pizzas, updatedSocial); broadcastCommentDelete({ mediaId, commentId }); };
   const handleCommentReaction = (mediaId: string, commentId: string, emoji: string) => { const updatedComments = (socialData.comments[mediaId] || []).map(c => { if (c.id === commentId) { const curr = c.reactions || {}; return { ...c, reactions: { ...curr, [userId]: curr[userId] === emoji ? undefined : emoji } as any }; } return c; }); const updatedSocial = { ...socialData, comments: { ...socialData.comments, [mediaId]: updatedComments } }; syncAndBroadcast(pizzas, updatedSocial); broadcastCommentReaction({ mediaId, commentId, userId, emoji }); };
   const handleReplyToComment = (mediaId: string, commentId: string, text: string) => { const r: Reply = { id: Math.random().toString(36).substring(2, 15), user: currentUser?.nickname || 'Juiz', text, date: new Date().toISOString(), reactions: {} }; const updatedComments = (socialData.comments[mediaId] || []).map(c => c.id === commentId ? { ...c, replies: [...(c.replies || []), r] } : c); const updatedSocial = { ...socialData, comments: { ...socialData.comments, [mediaId]: updatedComments } }; syncAndBroadcast(pizzas, updatedSocial); broadcastReply({ mediaId, commentId, reply: r }); };
+  
+  // NOVAS FUNÇÕES: Editar e Apagar Respostas
+  const handleEditReply = (mediaId: string, commentId: string, replyId: string, newText: string) => {
+      const updatedComments = (socialData.comments[mediaId] || []).map(c => {
+          if (c.id === commentId) {
+              return { ...c, replies: (c.replies || []).map(r => r.id === replyId ? { ...r, text: newText } : r) };
+          }
+          return c;
+      });
+      const updatedSocial = { ...socialData, comments: { ...socialData.comments, [mediaId]: updatedComments } };
+      syncAndBroadcast(pizzas, updatedSocial);
+      broadcastReplyEdit({ mediaId, commentId, replyId, newText });
+  };
+  const handleDeleteReply = (mediaId: string, commentId: string, replyId: string) => {
+      const updatedComments = (socialData.comments[mediaId] || []).map(c => {
+          if (c.id === commentId) {
+              return { ...c, replies: (c.replies || []).filter(r => r.id !== replyId) };
+          }
+          return c;
+      });
+      const updatedSocial = { ...socialData, comments: { ...socialData.comments, [mediaId]: updatedComments } };
+      syncAndBroadcast(pizzas, updatedSocial);
+      broadcastReplyDelete({ mediaId, commentId, replyId });
+  };
+
   const handleReplyReaction = (mediaId: string, commentId: string, replyId: string, emoji: string) => { const updatedComments = (socialData.comments[mediaId] || []).map(c => { if (c.id === commentId) { const updatedReplies = (c.replies || []).map(r => { if (r.id === replyId) { const curr = r.reactions || {}; return { ...r, reactions: { ...curr, [userId]: curr[userId] === emoji ? undefined : emoji } as any }; } return r; }); return { ...c, replies: updatedReplies }; } return c; }); const updatedSocial = { ...socialData, comments: { ...socialData.comments, [mediaId]: updatedComments } }; syncAndBroadcast(pizzas, updatedSocial); broadcastReplyReaction({ mediaId, commentId, replyId, userId, emoji }); };
-
-  const handleToggleVoting = () => {
-      const newState = !isVotingReleased;
-      syncAndBroadcast(pizzas, socialData, newState);
-      const payload = { id: Math.random().toString(36).substring(2, 9), title: newState ? 'Votação Aberta! 🍕' : 'Votação Encerrada', message: newState ? 'As fichas de votação já estão disponíveis!' : 'Votação finalizada.', targetTab: newState ? 'grid_salgada' : 'news' };
-      supabase.channel('app_global_sync').send({ type: 'broadcast', event: 'notification', payload });
-      broadcastAppNotification(payload as any);
-      addAppNotification(payload.title, payload.message, payload.targetTab as any);
-      triggerSystemNotification(payload.title, payload.message);
-  };
-
-  const handleRevealComplete = (winnerData?: { id: string | number, score: number }) => {
-      setTriggerRankReveal(false);
-      if (winnerData && isAdmin) {
-          const announcement: MediaItem = { id: "leader-notif-" + Date.now(), url: "", type: "news" as any, category: "pizza", date: Date.now(), caption: `🏆 LÍDER ATUAL\n🍕 Pizza #${winnerData.id}\n⭐ ${winnerData.score.toFixed(1)} pts`, hiddenFromFeed: false };
-          handleAddMedia(pizzas[0].id, announcement);
-      }
-  };
-
-  const visibleTabs = useMemo(() => {
-    // Fichas agora são sempre visíveis para alinhar com o requisito de "Fichas Bloqueadas" visíveis.
-    return ['news', 'avisos', 'grid_salgada', 'grid_doce', 'charts', 'rules', 'dynamics', 'album', 'calendar', 'history'];
-  }, []);
-
-  const handleBroadcastAlert = (section: string) => {
-      const titles: Record<string, string> = { 'rules': t.rules, 'dynamics': t.dynamics, 'history': t.history, 'news': t.news, 'avisos': t.avisos, 'album': t.album, 'dates': t.dates };
-      const notifId = Math.random().toString(36).substring(2, 9);
-      const payload = { id: notifId, title: titles[section] || 'Aviso', message: `Atualização importante em **${titles[section] || section}**!`, targetTab: section as any };
-      
-      supabase.channel('app_global_sync').send({ type: 'broadcast', event: 'notification', payload });
-      broadcastAppNotification(payload as any); 
-      addAppNotification(payload.title, payload.message, section as any, notifId);
-      triggerSystemNotification(payload.title, payload.message);
-  };
-
-  const getTabLabel = (id: string) => {
-    const map: Record<string, string> = { grid_salgada: 'Salgada', grid_doce: 'Doce', charts: t.rankings, calendar: t.dates, news: t.news, avisos: t.avisos, rules: t.rules, dynamics: t.dynamics, album: t.album, history: t.history };
-    return map[id] || (t as any)[id] || id;
-  };
+  const handleToggleVoting = () => { const newState = !isVotingReleased; syncAndBroadcast(pizzas, socialData, newState); const payload = { id: Math.random().toString(36).substring(2, 9), title: newState ? 'Votação Aberta! 🍕' : 'Votação Encerrada', message: newState ? 'As fichas de votação já estão disponíveis!' : 'Votação finalizada.', targetTab: newState ? 'grid_salgada' : 'news' }; supabase.channel('app_global_sync').send({ type: 'broadcast', event: 'notification', payload }); broadcastAppNotification(payload as any); addAppNotification(payload.title, payload.message, payload.targetTab as any); triggerSystemNotification(payload.title, payload.message); };
+  const handleRevealComplete = (winnerData?: { id: string | number, score: number }) => { setTriggerRankReveal(false); if (winnerData && isAdmin) { const announcement: MediaItem = { id: "leader-notif-" + Date.now(), url: "", type: "news" as any, category: "pizza", date: Date.now(), caption: `🏆 LÍDER ATUAL\n🍕 Pizza #${winnerData.id}\n⭐ ${winnerData.score.toFixed(1)} pts`, hiddenFromFeed: false }; handleAddMedia(pizzas[0].id, announcement); } };
+  const visibleTabs = useMemo(() => { const base = ['news', 'avisos', 'grid_salgada', 'grid_doce', 'rules', 'dynamics', 'album', 'history']; if (isAdmin) return [...base, 'charts', 'calendar']; return base; }, [isAdmin]);
+  const handleBroadcastAlert = (section: string) => { const titles: Record<string, string> = { 'rules': t.rules, 'dynamics': t.dynamics, 'history': t.history, 'news': t.news, 'avisos': t.avisos, 'album': t.album, 'dates': t.dates }; const notifId = Math.random().toString(36).substring(2, 9); const payload = { id: notifId, title: titles[section] || 'Aviso', message: `Atualização importante em **${titles[section] || section}**!`, targetTab: section as any }; supabase.channel('app_global_sync').send({ type: 'broadcast', event: 'notification', payload }); broadcastAppNotification(payload as any); addAppNotification(payload.title, payload.message, section as any, notifId); triggerSystemNotification(payload.title, payload.message); };
+  const getTabLabel = (id: string) => { const map: Record<string, string> = { grid_salgada: 'Salgada', grid_doce: 'Doce', charts: t.rankings, calendar: t.dates, news: t.news, avisos: t.avisos, rules: t.rules, dynamics: t.dynamics, album: t.album, history: t.history }; return map[id] || (t as any)[id] || id; };
 
   if (showAbertura) return <AberturaPage onFinish={() => setShowAbertura(false)} language={language} />;
   if (!currentUser) return <AuthPage onLoginSuccess={handleLoginSuccess} language={language} setLanguage={setLanguage} notifications={notifications} onlineNicknames={Object.values(onlineNicknames).map((v: any) => v.nickname)} />;
@@ -584,23 +556,9 @@ const App: React.FC = () => {
 
   return (
     <div className={`min-h-screen pb-20 relative transition-all duration-700 ${themeColor === 'babyBlue' ? 'theme-baby-blue-animate' : themeColor === 'pink' ? 'theme-pink-animate' : themeColor === 'lightPurple' ? 'theme-purple-animate' : themeColor === 'babyGreen' ? 'theme-green-animate' : 'bg-slate-50 dark:bg-slate-950'} overflow-x-hidden`}>
-      <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
-          <div className="absolute top-[-10%] left-[-10%] w-[80vw] h-[80vw] bg-orange-400/10 dark:bg-orange-600/5 rounded-full blur-[120px] animate-float opacity-70"></div>
-          <div className="absolute bottom-[-10%] right-[-10%] w-[70vw] h-[70vw] bg-indigo-500/10 dark:bg-indigo-700/5 rounded-full blur-[120px] animate-float-delayed opacity-70"></div>
-          <div className="absolute top-[30%] left-[20%] w-[40vw] h-[40vw] bg-pink-400/5 dark:bg-pink-600/5 rounded-full blur-[100px] animate-pulse-slow"></div>
-      </div>
-
+      <div className="fixed inset-0 overflow-hidden pointer-events-none z-0"><div className="absolute top-[-10%] left-[-10%] w-[80vw] h-[80vw] bg-orange-400/10 dark:bg-orange-600/5 rounded-full blur-[120px] animate-float opacity-70"></div><div className="absolute bottom-[-10%] right-[-10%] w-[70vw] h-[70vw] bg-indigo-500/10 dark:bg-indigo-700/5 rounded-full blur-[120px] animate-float-delayed opacity-70"></div><div className="absolute top-[30%] left-[20%] w-[40vw] h-[40vw] bg-pink-400/5 dark:bg-pink-600/5 rounded-full blur-[100px] animate-pulse-slow"></div></div>
       {toastMessage && !showSettingsModal && <ToastNotification message={toastMessage} onClose={() => setToastMessage(null)} />}
-      
-      {isAdmin && (
-          <div className={`${isVotingReleased ? 'bg-green-600' : 'bg-slate-900'} text-white px-4 py-1.5 text-[9px] font-black uppercase tracking-widest flex items-center justify-between animate-in slide-in-from-top duration-500 z-[250] sticky top-0 border-b border-white/10 shadow-lg glass`}>
-              <div className="flex items-center gap-2">{isVotingReleased ? <Unlock size={12} className="animate-pulse" /> : <Lock size={12} />}<span>{isVotingReleased ? 'Votação Liberada' : 'Fichas Bloqueadas'}</span></div>
-              <button onClick={handleToggleVoting} className="bg-white text-slate-900 px-4 py-1.5 rounded-full hover:bg-slate-100 transition-all shadow-md active:scale-95 font-black uppercase text-[8px] tracking-tighter">
-                {isVotingReleased ? 'Encerrar Votação' : 'Liberar para Jurados'}
-              </button>
-          </div>
-      )}
-
+      {isAdmin && (<div className={`${isVotingReleased ? 'bg-green-600' : 'bg-slate-900'} text-white px-4 py-1.5 text-[9px] font-black uppercase tracking-widest flex items-center justify-between animate-in slide-in-from-top duration-500 z-[250] sticky top-0 border-b border-white/10 shadow-lg glass`}><div className="flex items-center gap-2">{isVotingReleased ? <Unlock size={12} className="animate-pulse" /> : <Lock size={12} />}<span>{isVotingReleased ? 'Votação Liberada' : 'Fichas Bloqueadas'}</span></div><button onClick={handleToggleVoting} className="bg-white text-slate-900 px-4 py-1.5 rounded-full hover:bg-slate-100 transition-all shadow-md active:scale-95 font-black uppercase text-[8px] tracking-tighter">{isVotingReleased ? 'Encerrar Votação' : 'Liberar para Jurados'}</button></div>)}
       <SettingsModal isOpen={showSettingsModal} onClose={() => setShowSettingsModal(false)} currentUser={currentUser} onUpdateUser={handleUpdateUser} currentLanguage={language} onLanguageChange={setLanguage} currentTheme={theme} onThemeChange={setTheme} pizzas={pizzas} socialData={socialData} onSimulateLevelUp={() => { setLevelUpLevel(l => l >= 5 ? 1 : l + 1); setIsSimulating(true); setShowLevelUpModal(true); setShowSettingsModal(false); }} themeColor={themeColor} onThemeColorChange={setThemeColor} onForceSync={async () => { isSyncingRef.current = true; const cp = await databaseService.getFromCloud('pizzas'); const cs = await databaseService.getFromCloud('social_data'); const allArchivedMedia = await databaseService.getAllMedia(); const mediaDict: Record<string, string> = {}; allArchivedMedia.forEach(m => { mediaDict[m.id] = m.url; }); if (cp) { const hydratedPizzas = hydratePizzas(cp, mediaDict); setPizzas(hydratedPizzas); securityService.safeSetItem('pizzaGradeDataV2', JSON.stringify(securityService.slimPizzas(hydratedPizzas))); } if (cs) { setSocialData(cs); securityService.safeSetItem('pizza_social_data', JSON.stringify(cs)); } isSyncingRef.current = false; }} />
       {showProfilePage && <ProfilePage currentUser={currentUser} onUpdateUser={handleUpdateUser} onClose={() => setShowProfilePage(false)} pizzas={pizzas} socialData={socialData} language={language} pizzaOwners={PIZZA_OWNERS} />}
       <HistoryModal isOpen={showHistory} onClose={() => setShowHistory(false)} onAlertAdmin={() => handleBroadcastAlert('history')} isAdmin={isAdmin} language={language} />
@@ -608,181 +566,17 @@ const App: React.FC = () => {
       <CalendarModal isOpen={showCalendarModal || (activeTab === 'calendar' && isAdmin)} onClose={() => { setShowCalendarModal(false); if (activeTab === 'calendar') setActiveTab('news'); }} language={language} isAdmin={isAdmin} onUpdateDateGlobal={handleUpdateDate} onAlertAdmin={() => handleBroadcastAlert('dates')} pizzas={pizzas} />
       {showLevelUpModal && <LevelUpModal newLevel={levelUpLevel} onClose={() => setShowLevelUpModal(false)} nickname={currentUser.nickname} onTestNextLevel={isSimulating ? () => setLevelUpLevel(prev => prev >= 5 ? 1 : prev + 1) : undefined} />}
       <VotingSimulation isOpen={showSimulation} onClose={() => setShowSimulation(false)} onNavigateToSalgada={() => { setActiveTab('grid_salgada'); setGridMode('salgada'); }} currentTab={activeTab} />
-
-      <nav className={`sticky top-0 z-[240] pt-safe transition-all duration-500 bg-white/80 dark:bg-slate-900/80 glass border-b border-slate-200/50 dark:border-slate-800/50 shadow-sm group/top-nav ${!navEffectiveVisibility ? 'opacity-0 -translate-y-full pointer-events-none' : 'opacity-100 translate-y-0'}`}>
-        {isAdmin && currentUser?.nickname === '@Leonardo' && (
-            <div className="absolute -bottom-7 left-1/2 -translate-x-1/2 opacity-0 group-hover/top-nav:opacity-100 transition-all duration-500 pointer-events-none bg-slate-900/80 dark:bg-slate-100/80 text-white dark:text-slate-900 px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest whitespace-nowrap backdrop-blur-sm shadow-xl border border-white/10 z-50 transform group-hover/top-nav:translate-y-[2px]">
-                Painel de Controle Superior
-            </div>
-        )}
-
-        <div className="max-w-7xl mx-auto px-4 h-14 flex justify-between items-center relative">
-            <div className="flex flex-col gap-0.5 w-1/3 relative group/profile">
-                {isAdmin && currentUser?.nickname === '@Leonardo' && (
-                    <div className="absolute -bottom-7 left-0 opacity-0 group-hover/profile:opacity-100 transition-all duration-500 pointer-events-none bg-slate-900/80 dark:bg-slate-100/80 text-white dark:text-slate-900 px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest whitespace-nowrap backdrop-blur-sm shadow-xl border border-white/10 z-50 transform group-hover/profile:translate-y-[2px]">
-                        Perfil do Administrador
-                    </div>
-                )}
-                <button onClick={() => setShowProfilePage(true)} className="flex items-center gap-1.5 rounded-full pl-0.5 pr-2.5 py-0.5 border border-slate-200/50 dark:border-slate-700/50 bg-slate-100/50 dark:bg-slate-800/50 hover:bg-white transition-all shadow-sm w-fit active:scale-95">
-                    <div className="w-6 h-6 rounded-full overflow-hidden border-2 border-white dark:border-slate-600 shadow-sm">
-                        {currentUser.avatar ? <img src={currentUser.avatar} alt="Avatar" className="w-full h-full object-cover" /> : <div className="w-full h-full bg-slate-300 flex items-center justify-center text-slate-500"><User size={12} /></div>}
-                    </div>
-                    <span className="text-[9px] font-black truncate max-w-[70px] text-slate-800 dark:text-slate-100 uppercase tracking-tight">{currentUser.nickname}</span>
-                </button>
-                <div className="flex items-center gap-1 bg-white/50 dark:bg-slate-800/30 px-1 py-0.5 rounded-full border border-slate-200/30 dark:border-slate-700/30 w-fit">
-                    <span className={`w-1 h-1 rounded-full ${isOnline ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></span>
-                    <span className="text-[7px] font-black text-slate-600 dark:text-slate-400 flex items-center gap-1 uppercase tracking-tighter">
-                        {isOnline ? t.online : t.offline} • <Users size={7} className="text-indigo-500" /> {peerCount}
-                    </span>
-                </div>
-            </div>
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
-                <img src={LOGO_BASE64} alt="Logo" className="h-8 w-auto object-contain pointer-events-auto hover:scale-110 transition-transform cursor-pointer drop-shadow-md" onClick={() => isAdmin && setActiveTab('news')} />
-            </div>
-            <div className="flex items-center justify-end gap-1 w-1/3" ref={notificationMenuRef}>
-               <div className="relative group" ref={scaleMenuRef}>
-                   <button onClick={() => setShowScaleMenu(!showScaleMenu)} className="p-2 rounded-lg relative text-slate-700 dark:text-slate-200 bg-white/50 dark:bg-slate-800/50 border border-slate-200/50 dark:border-slate-700/50 transition-all active:scale-90 hover:shadow-lg">
-                       <Maximize size={16} />
-                   </button>
-                   {showScaleMenu && (
-                       <div className="absolute top-full right-0 mt-2 w-48 bg-white/95 dark:bg-slate-900/95 glass rounded-xl shadow-5xl border border-slate-200 dark:border-slate-700 overflow-hidden z-[300] animate-in slide-in-from-top-2">
-                           <div className="p-3 border-b border-slate-100 dark:border-slate-800 flex items-center gap-2 bg-slate-50/50 dark:bg-slate-800/50">
-                               <MonitorSmartphone size={12} className="text-indigo-500" />
-                               <h3 className="font-black text-[9px] uppercase text-slate-500 tracking-widest">Escala Global</h3>
-                           </div>
-                           <div className="p-1.5 space-y-1">
-                               {[ { label: 'Mini', scale: 0.85, icon: <Smartphone size={12}/> }, { label: 'Padrão', scale: 1, icon: <MonitorSmartphone size={12}/> }, { label: 'Grande', scale: 1.15, icon: <Monitor size={12}/> }, { label: 'Máximo', scale: 1.3, icon: <Maximize size={12}/> } ].map((opt) => (
-                                   <button key={opt.scale} onClick={() => { setUiScale(opt.scale); setShowScaleMenu(false); }} className={`w-full flex items-center justify-between p-2.5 rounded-lg transition-all text-left ${uiScale === opt.scale ? 'bg-indigo-600 text-white shadow-md' : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'}`}>
-                                       <div className="flex items-center gap-2"><span className="text-[10px] font-black uppercase tracking-tight">{opt.label}</span></div>
-                                       {uiScale === opt.scale && <Check size={12} />}
-                                   </button>
-                               ))}
-                           </div>
-                       </div>
-                   )}
-               </div>
-               <div className="relative group">
-                   <button onClick={() => setShowNotificationMenu(!showNotificationMenu)} className="p-2 rounded-lg relative text-slate-700 dark:text-slate-200 bg-white/50 dark:bg-slate-800/50 border border-slate-200/50 dark:border-slate-700/50 transition-all active:scale-90 hover:shadow-lg">
-                       <Bell size={16} className={unreadCount > 0 ? "animate-wiggle" : ""} />
-                       {unreadCount > 0 && <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border border-white dark:border-slate-900 animate-pulse"></span>}
-                   </button>
-                   {showNotificationMenu && (
-                       <div className="absolute top-full right-0 mt-2 w-64 bg-white/95 dark:bg-slate-900/95 glass rounded-xl shadow-5xl border border-slate-200 dark:border-slate-700 overflow-hidden z-[300] animate-in slide-in-from-top-2">
-                           <div className="p-3 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/50">
-                               <h3 className="font-black text-[9px] uppercase text-slate-500 tracking-widest">{t.comments}</h3>
-                               <div className="flex gap-2">
-                                   <button onClick={markAllRead} className="text-[8px] font-black text-indigo-600 uppercase tracking-tighter">Lidas</button>
-                                   <button onClick={clearNotifications} className="text-[8px] font-black text-red-500 uppercase tracking-tighter">Limpar</button>
-                               </div>
-                           </div>
-                           <div className="max-h-[250px] overflow-y-auto custom-scrollbar">
-                               {notifications.length === 0 ? <div className="p-8 text-center flex flex-col items-center gap-2 opacity-30"><Bell size={24}/><p className="text-[8px] font-black uppercase tracking-[0.2em]">Vazio</p></div> : notifications.map(n => (
-                                   <button key={n.id} onClick={() => handleNotificationClick(n)} className={`w-full text-left p-3 border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors flex gap-2.5 relative ${!n.read ? 'bg-indigo-50/20' : ''}`}>
-                                       <div className="p-2 bg-indigo-600 text-white rounded-lg h-fit shadow-md"><Bell size={12} /></div>
-                                       <div className="min-w-0 flex-1">
-                                           <h4 className="text-[10px] font-black text-slate-800 dark:text-white truncate uppercase tracking-tight">{n.title}</h4>
-                                           <p className="text-[9px] text-slate-500 dark:text-slate-400 line-clamp-2 mt-0.5 font-medium leading-tight" dangerouslySetInnerHTML={{ __html: n.message.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>') }}></p>
-                                       </div>
-                                   </button>
-                               ))}
-                           </div>
-                       </div>
-                   )}
-               </div>
-               <div className="relative group">
-                   <button onClick={() => setShowSettingsModal(true)} className="p-2 rounded-lg text-slate-700 dark:text-slate-200 bg-white/50 dark:bg-slate-800/50 border border-slate-200/50 dark:border-slate-700/50 relative hover:shadow-lg transition-all active:scale-90">
-                       <SettingsIcon size={16} />
-                   </button>
-               </div>
-               <div className="relative group">
-                   <button onClick={handleLogout} className="p-2 rounded-lg text-red-500 bg-red-50 dark:bg-red-900/20 border border-red-200/50 dark:border-red-800/50 hover:shadow-lg transition-all active:scale-90">
-                       <LogOut size={16} />
-                   </button>
-               </div>
-            </div>
-        </div>
-      </nav>
-
-      <div className={`fixed bottom-3 sm:bottom-5 pb-safe left-1/2 -translate-x-1/2 z-[240] flex gap-0.5 glass p-0.5 rounded-[1.8rem] border border-white/40 dark:border-slate-800/40 bg-white/70 dark:bg-slate-900/70 shadow-4xl shadow-black/10 transition-all duration-500 transform w-[98%] max-w-[420px] sm:w-auto justify-center items-center group/nav ${!navEffectiveVisibility ? 'opacity-0 translate-y-32 pointer-events-none' : 'opacity-100 translate-y-0'}`} onMouseLeave={() => setHoveredTab(null)}>
-          {isAdmin && currentUser?.nickname === '@Leonardo' && (
-              <div className="absolute -top-7 left-1/2 -translate-x-1/2 opacity-0 group-hover/nav:opacity-100 transition-all duration-500 pointer-events-none bg-slate-900/80 dark:bg-slate-100/80 text-white dark:text-slate-900 px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest whitespace-nowrap backdrop-blur-sm shadow-xl border border-white/10 z-50 transform group-hover/nav:translate-y-[-2px]">
-                  Painel de controle inferior
-              </div>
-          )}
-          {visibleTabs.map(id => {
-              const isActive = activeTab === id;
-              const isHovered = hoveredTab === id;
-              const shouldExpand = isActive || isHovered;
-              return (
-                  <button key={id} onClick={() => handleNavClick(id)} onMouseEnter={() => setHoveredTab(id)} className={`group relative flex items-center justify-center p-1.5 rounded-2xl transition-all duration-300 ease-out overflow-hidden h-9 sm:h-10 ${shouldExpand ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-500/30' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`} style={{ minWidth: shouldExpand ? (window.innerWidth < 640 ? '64px' : '90px') : (window.innerWidth < 640 ? '26px' : '36px') }}>
-                      <div className="flex items-center gap-1">
-                        <span className={`shrink-0 transition-transform duration-300 ${shouldExpand ? 'scale-110' : 'group-hover:scale-110'}`}>
-                            {id === 'news' ? <Newspaper size={14} /> : id === 'avisos' ? <Megaphone size={14} /> : id === 'grid_salgada' ? <Pizza size={14} /> : id === 'grid_doce' ? <Cake size={14} /> : id === 'charts' ? <Trophy size={14} /> : id === 'rules' ? <ScrollText size={14} /> : id === 'dynamics' ? <Gamepad2 size={14} /> : id === 'album' ? <ImageIcon size={14} /> : id === 'calendar' ? <Calendar size={14} /> : <BookOpen size={14} />}
-                        </span>
-                        <div className={`flex items-center overflow-hidden transition-all duration-300 ease-out h-full ${shouldExpand ? 'max-w-[60px] opacity-100' : 'max-w-0 opacity-0'}`}><span className="bg-white/20 px-1.5 py-0.5 rounded-md text-[7px] sm:text-[8px] font-black uppercase tracking-tighter whitespace-nowrap ml-1">{getTabLabel(id)}</span></div>
-                      </div>
-                  </button>
-              );
-          })}
-      </div>
-
+      <nav className={`sticky top-0 z-[240] pt-safe transition-all duration-500 bg-white/80 dark:bg-slate-900/80 glass border-b border-slate-200/50 dark:border-slate-800/50 shadow-sm group/top-nav ${!navEffectiveVisibility ? 'opacity-0 -translate-y-full pointer-events-none' : 'opacity-100 translate-y-0'}`}><div className="max-w-7xl mx-auto px-4 h-14 flex justify-between items-center relative"><div className="flex flex-col gap-0.5 w-1/3 relative group/profile"><button onClick={() => setShowProfilePage(true)} className="flex items-center gap-1.5 rounded-full pl-0.5 pr-2.5 py-0.5 border border-slate-200/50 dark:border-slate-700/50 bg-slate-100/50 dark:bg-slate-800/50 hover:bg-white transition-all shadow-sm w-fit active:scale-95"><div className="w-6 h-6 rounded-full overflow-hidden border-2 border-white dark:border-slate-600 shadow-sm">{currentUser.avatar ? <img src={currentUser.avatar} alt="Avatar" className="w-full h-full object-cover" /> : <div className="w-full h-full bg-slate-300 flex items-center justify-center text-slate-500"><User size={12} /></div>}</div><span className="text-[9px] font-black truncate max-w-[70px] text-slate-800 dark:text-slate-100 uppercase tracking-tight">{currentUser.nickname}</span></button><div className="flex items-center gap-1 bg-white/50 dark:bg-slate-800/30 px-1 py-0.5 rounded-full border border-slate-200/30 dark:border-slate-700/30 w-fit"><span className={`w-1 h-1 rounded-full ${isOnline ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></span><span className="text-[7px] font-black text-slate-600 dark:text-slate-400 flex items-center gap-1 uppercase tracking-tighter">{isOnline ? t.online : t.offline} • <Users size={7} className="text-indigo-500" /> {peerCount}</span></div></div><div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10"><img src={LOGO_BASE64} alt="Logo" className="h-8 w-auto object-contain pointer-events-auto hover:scale-110 transition-transform cursor-pointer drop-shadow-md" onClick={() => isAdmin && setActiveTab('news')} /></div><div className="flex items-center justify-end gap-1 w-1/3" ref={notificationMenuRef}><div className="relative group" ref={scaleMenuRef}><button onClick={() => setShowScaleMenu(!showScaleMenu)} className="p-2 rounded-lg relative text-slate-700 dark:text-slate-200 bg-white/50 dark:bg-slate-800/50 border border-slate-200/50 dark:border-slate-700/50 transition-all active:scale-90 hover:shadow-lg"><Maximize size={16} /></button>{showScaleMenu && (<div className="absolute top-full right-0 mt-2 w-48 bg-white/95 dark:bg-slate-900/95 glass rounded-xl shadow-5xl border border-slate-200 dark:border-slate-700 overflow-hidden z-[300] animate-in slide-in-from-top-2"><div className="p-3 border-b border-slate-100 dark:border-slate-800 flex items-center gap-2 bg-slate-50/50 dark:bg-slate-800/50"><MonitorSmartphone size={12} className="text-indigo-500" /><h3 className="font-black text-[9px] uppercase text-slate-500 tracking-widest">Escala Global</h3></div><div className="p-1.5 space-y-1">{[ { label: 'Mini', scale: 0.85, icon: <Smartphone size={12}/> }, { label: 'Padrão', scale: 1, icon: <MonitorSmartphone size={12}/> }, { label: 'Grande', scale: 1.15, icon: <Monitor size={12}/> }, { label: 'Máximo', scale: 1.3, icon: <Maximize size={12}/> } ].map((opt) => (<button key={opt.scale} onClick={() => { setUiScale(opt.scale); setShowScaleMenu(false); }} className={`w-full flex items-center justify-between p-2.5 rounded-lg transition-all text-left ${uiScale === opt.scale ? 'bg-indigo-600 text-white shadow-md' : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'}`}><div className="flex items-center gap-2"><span className="text-[10px] font-black uppercase tracking-tight">{opt.label}</span></div>{uiScale === opt.scale && <Check size={12} />}</button>))}</div></div>)}</div><div className="relative group"><button onClick={() => setShowNotificationMenu(!showNotificationMenu)} className="p-2 rounded-lg relative text-slate-700 dark:text-slate-200 bg-white/50 dark:bg-slate-800/50 border border-slate-200/50 dark:border-slate-700/50 transition-all active:scale-90 hover:shadow-lg"><Bell size={16} className={unreadCount > 0 ? "animate-wiggle" : ""} />{unreadCount > 0 && <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border border-white dark:border-slate-900 animate-pulse"></span>}</button>{showNotificationMenu && (<div className="absolute top-full right-0 mt-2 w-64 bg-white/95 dark:bg-slate-900/95 glass rounded-xl shadow-5xl border border-slate-200 dark:border-slate-700 overflow-hidden z-[300] animate-in slide-in-from-top-2"><div className="p-3 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/50"><h3 className="font-black text-[9px] uppercase text-slate-500 tracking-widest">{t.comments}</h3><div className="flex gap-2"><button onClick={markAllRead} className="text-[8px] font-black text-indigo-600 uppercase tracking-tighter">Lidas</button><button onClick={clearNotifications} className="text-[8px] font-black text-red-500 uppercase tracking-tighter">Limpar</button></div></div><div className="max-h-[250px] overflow-y-auto custom-scrollbar">{notifications.length === 0 ? <div className="p-8 text-center flex flex-col items-center gap-2 opacity-30"><Bell size={24}/><p className="text-[8px] font-black uppercase tracking-[0.2em]">Vazio</p></div> : notifications.map(n => (<button key={n.id} onClick={() => handleNotificationClick(n)} className={`w-full text-left p-3 border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors flex gap-2.5 relative ${!n.read ? 'bg-indigo-50/20' : ''}`}><div className="p-2 bg-indigo-600 text-white rounded-lg h-fit shadow-md"><Bell size={12} /></div><div className="min-w-0 flex-1"><h4 className="text-[10px] font-black text-slate-800 dark:text-white truncate uppercase tracking-tight">{n.title}</h4><p className="text-[9px] text-slate-500 dark:text-slate-400 line-clamp-2 mt-0.5 font-medium leading-tight" dangerouslySetInnerHTML={{ __html: n.message.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>') }}></p></div></button>))}</div></div>)}</div><div className="relative group"><button onClick={() => setShowSettingsModal(true)} className="p-2 rounded-lg text-slate-700 dark:text-slate-200 bg-white/50 dark:bg-slate-800/50 border border-slate-200/50 dark:border-slate-700/50 relative hover:shadow-lg transition-all active:scale-90"><SettingsIcon size={16} /></button></div><div className="relative group"><button onClick={handleLogout} className="p-2 rounded-lg text-red-500 bg-red-50 dark:bg-red-900/20 border border-red-200/50 dark:border-red-800/50 hover:shadow-lg transition-all active:scale-90"><LogOut size={16} /></button></div></div></div></nav>
+      <div className={`fixed bottom-3 sm:bottom-5 pb-safe left-1/2 -translate-x-1/2 z-[240] flex gap-0.5 glass p-0.5 rounded-[1.8rem] border border-white/40 dark:border-slate-800/40 bg-white/70 dark:bg-slate-900/70 shadow-4xl shadow-black/10 transition-all duration-500 transform w-[98%] max-w-[420px] sm:w-auto justify-center items-center group/nav ${!navEffectiveVisibility ? 'opacity-0 translate-y-32 pointer-events-none' : 'opacity-100 translate-y-0'}`} onMouseLeave={() => setHoveredTab(null)}>{visibleTabs.map(id => { const isActive = activeTab === id; const isHovered = hoveredTab === id; const shouldExpand = isActive || isHovered; return (<button key={id} onClick={() => handleNavClick(id)} onMouseEnter={() => setHoveredTab(id)} className={`group relative flex items-center justify-center p-1.5 rounded-2xl transition-all duration-300 ease-out overflow-hidden h-9 sm:h-10 ${shouldExpand ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-500/30' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`} style={{ minWidth: shouldExpand ? (window.innerWidth < 640 ? '64px' : '90px') : (window.innerWidth < 640 ? '26px' : '36px') }}><div className="flex items-center gap-1"><span className={`shrink-0 transition-transform duration-300 ${shouldExpand ? 'scale-110' : 'group-hover:scale-110'}`}>{id === 'news' ? <Newspaper size={14} /> : id === 'avisos' ? <Megaphone size={14} /> : id === 'grid_salgada' ? <Pizza size={14} /> : id === 'grid_doce' ? <Cake size={14} /> : id === 'charts' ? <Trophy size={14} /> : id === 'rules' ? <ScrollText size={14} /> : id === 'dynamics' ? <Gamepad2 size={14} /> : id === 'album' ? <ImageIcon size={14} /> : id === 'calendar' ? <Calendar size={14} /> : <BookOpen size={14} />}</span><div className={`flex items-center overflow-hidden transition-all duration-300 ease-out h-full ${shouldExpand ? 'max-w-[60px] opacity-100' : 'max-w-0 opacity-0'}`}><span className="bg-white/20 px-1.5 py-0.5 rounded-md text-[7px] sm:text-[8px] font-black uppercase tracking-tighter whitespace-nowrap ml-1">{getTabLabel(id)}</span></div></div></button>);})}</div>
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-3 h-[calc(100vh-56px)] flex flex-col min-h-0 relative z-10">
         <div ref={scrollContainerRef} className="flex-1 overflow-y-auto no-scrollbar custom-scrollbar pb-20 pt-1">
-            {activeTab === 'news' && <NewsFeed mode="news" pizzas={pizzas} userId={userId} onAddPhoto={handleAddMedia} onDeletePhoto={handleDeleteMedia} socialData={socialData} onAddComment={handleAddComment} onEditComment={handleEditComment} onDeleteComment={handleDeleteComment} onReact={handleMainReaction} onCommentReact={handleCommentReaction} onUpdateCaption={handleUpdateCaption} language={language} currentUser={currentUser} onReplyToComment={handleReplyToComment} onReplyReact={handleReplyReaction} onPollVote={handlePollVote} uiScale={uiScale} />}
-            {activeTab === 'avisos' && <NewsFeed mode="avisos" pizzas={pizzas} userId={userId} onAddPhoto={handleAddMedia} onDeletePhoto={handleDeleteMedia} socialData={socialData} onAddComment={handleAddComment} onEditComment={handleEditComment} onDeleteComment={handleDeleteComment} onReact={handleMainReaction} onCommentReact={handleCommentReaction} onUpdateCaption={handleUpdateCaption} language={language} currentUser={currentUser} onReplyToComment={handleReplyToComment} onReplyReact={handleReplyReaction} onPollVote={handlePollVote} uiScale={uiScale} />}
+            {activeTab === 'news' && <NewsFeed mode="news" pizzas={pizzas} userId={userId} onAddPhoto={handleAddMedia} onDeletePhoto={handleDeleteMedia} socialData={socialData} onAddComment={handleAddComment} onEditComment={handleEditComment} onDeleteComment={handleDeleteComment} onReact={handleMainReaction} onCommentReact={handleCommentReaction} onUpdateCaption={handleUpdateCaption} language={language} currentUser={currentUser} onReplyToComment={handleReplyToComment} onEditReply={handleEditReply} onDeleteReply={handleDeleteReply} onReplyReact={handleReplyReaction} onPollVote={handlePollVote} uiScale={uiScale} />}
+            {activeTab === 'avisos' && <NewsFeed mode="avisos" pizzas={pizzas} userId={userId} onAddPhoto={handleAddMedia} onDeletePhoto={handleDeleteMedia} socialData={socialData} onAddComment={handleAddComment} onEditComment={handleEditComment} onDeleteComment={handleDeleteComment} onReact={handleMainReaction} onCommentReact={handleCommentReaction} onUpdateCaption={handleUpdateCaption} language={language} currentUser={currentUser} onReplyToComment={handleReplyToComment} onEditReply={handleEditReply} onDeleteReply={handleDeleteReply} onReplyReact={handleReplyReaction} onPollVote={handlePollVote} uiScale={uiScale} />}
             {activeTab === 'rules' && <RulesPage language={language} isAdmin={isAdmin} onAlertAdmin={() => handleBroadcastAlert('rules')} />}
             {activeTab === 'dynamics' && <DynamicsPage language={language} isAdmin={isAdmin} onAlertAdmin={() => handleBroadcastAlert('dynamics')} />}
-            {(activeTab === 'grid_salgada' || activeTab === 'grid_doce') && (
-                <div className="space-y-3 animate-in fade-in duration-700">
-                    <div className="flex items-center justify-between px-1">
-                      <div className="flex items-center gap-2">
-                        <h2 className="text-xl font-black flex items-center gap-2 tracking-tighter uppercase leading-none">
-                            {gridMode === 'doce' ? <Cake className="text-pink-500 w-5 h-5" /> : <Pizza className="text-orange-500 w-5 h-5" />} 
-                            <span className="bg-gradient-to-r from-slate-900 to-slate-500 dark:from-white dark:to-slate-400 bg-clip-text text-transparent">{t.grid} {gridMode === 'doce' ? 'Doce' : 'Salgada'}</span>
-                            <button onClick={() => setShowSimulation(true)} className="ml-2 w-6 h-6 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center border border-indigo-200 dark:border-indigo-800 hover:scale-110 active:scale-95 transition-all shadow-sm group relative"><span className="font-black text-xs">?</span></button>
-                        </h2>
-                        {isAdmin && (
-                            <button onClick={handleAdminClearTable} className="ml-2 p-2 bg-red-50 hover:bg-red-600 text-red-600 hover:text-white rounded-xl transition-all shadow-sm active:scale-90 border border-red-200 group relative"><Trash2 size={16} /></button>
-                        )}
-                      </div>
-                    </div>
-
-                    {!isVotingReleased && !isAdmin ? (
-                        <div className="py-20 flex flex-col items-center justify-center text-center px-6 bg-white dark:bg-slate-900 rounded-[3rem] border-2 border-dashed border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in-95">
-                            <div className="w-20 h-20 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mb-6 shadow-inner text-slate-400">
-                                <Lock size={40} strokeWidth={2.5} />
-                            </div>
-                            <h3 className="text-2xl font-black text-slate-800 dark:text-white uppercase tracking-tighter mb-2">Fichas Bloqueadas</h3>
-                            <p className="text-slate-500 dark:text-slate-400 font-medium max-w-xs text-sm">Aguardando o administrador liberar o período of votação. Fique atento aos avisos!</p>
-                        </div>
-                    ) : (
-                        <>
-                            <div className="flex flex-wrap gap-1 overflow-x-auto no-scrollbar px-1">
-                                {['asc', 'desc', 'rank'].map(s => (
-                                <button key={s} onClick={() => setGridSort(s as any)} className={`px-3 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest border-2 transition-all active:scale-95 shadow-sm ${gridSort === s ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700'}`}>{s === 'asc' ? 'Crescente' : s === 'desc' ? 'Decrescente' : 'Melhores'}</button>
-                                ))}
-                            </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 px-0.5">
-                            {sortedGridPizzas.map((p, i) => <PizzaCard key={String(p.id)} index={i} data={p} userId={userId} isAdmin={isAdmin} onUpdate={handleUpdateScore} onConfirm={handleConfirmVote} onUpdateNote={handleUpdateNote} onUpdateGlobalNote={handleUpdateNoteGlobal} onDelete={handleDeletePizza} onUpdateDate={handleUpdateDate} rank={rankMap[String(p.id)]} peerCount={peerCount} onAddPhoto={handleAddMedia} language={language} ownerName={isAdmin ? PIZZA_OWNERS[Number(p.id)] : undefined} variant={gridMode} />)}
-                            </div>
-                        </>
-                    )}
-                </div>
-            )}
-            {activeTab === 'charts' && (
-                <div className="flex flex-col gap-4 animate-in fade-in duration-700">
-                    {isAdmin && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-2">
-                             <div className="bg-white dark:bg-slate-900 p-4 rounded-3xl border-2 border-indigo-500 shadow-xl flex items-center justify-between gap-4">
-                                <div className="flex items-center gap-3"><div className="p-2 bg-indigo-600 rounded-xl text-white shadow-lg"><PlayCircle size={24} /></div><div><h3 className="font-black text-xs uppercase tracking-tight leading-none mb-1">Modo Espetáculo</h3><p className="text-[9px] text-slate-500 font-bold uppercase">Revelação de Resultados</p></div></div>
-                                <button onClick={() => setTriggerRankReveal(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-md transition-all active:scale-95">Iniciar</button>
-                            </div>
-                        </div>
-                    )}
-                    <RankingTable data={pizzas} language={language} pizzaOwners={PIZZA_OWNERS} triggerReveal={triggerRankReveal} onRevealComplete={handleRevealComplete} />
-                </div>
-            )}
-            {activeTab === 'album' && <UnifiedPhotoAlbum pizzas={pizzas} userId={userId} onAddMedia={handleAddMedia} onDeleteMedia={handleDeleteMedia} socialData={socialData} onAddComment={handleAddComment} onEditComment={handleEditComment} onDeleteComment={handleDeleteComment} onReact={handleMainReaction} onCommentReact={handleCommentReaction} onUpdateCaption={handleUpdateCaption} language={language} currentUser={currentUser} onAlertAdmin={() => handleBroadcastAlert('album')} uiScale={uiScale} />}
+            {(activeTab === 'grid_salgada' || activeTab === 'grid_doce') && (<div className="space-y-3 animate-in fade-in duration-700"><div className="flex items-center justify-between px-1"><div className="flex items-center gap-2"><h2 className="text-xl font-black flex items-center gap-2 tracking-tighter uppercase leading-none">{gridMode === 'doce' ? <Cake className="text-pink-500 w-5 h-5" /> : <Pizza className="text-orange-500 w-5 h-5" />} <span className="bg-gradient-to-r from-slate-900 to-slate-500 dark:from-white dark:to-slate-400 bg-clip-text text-transparent">{t.grid} {gridMode === 'doce' ? 'Doce' : 'Salgada'}</span><button onClick={() => setShowSimulation(true)} className="ml-2 w-6 h-6 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center border border-indigo-200 dark:border-indigo-800 hover:scale-110 active:scale-95 transition-all shadow-sm group relative"><span className="font-black text-xs">?</span></button></h2>{isAdmin && (<button onClick={handleAdminClearTable} className="ml-2 p-2 bg-red-50 hover:bg-red-600 text-red-600 hover:text-white rounded-xl transition-all shadow-sm active:scale-90 border border-red-200 group relative"><Trash2 size={16} /></button>)}</div></div>{!isVotingReleased && !isAdmin ? (<div className="py-20 flex flex-col items-center justify-center text-center px-6 bg-white dark:bg-slate-900 rounded-[3rem] border-2 border-dashed border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in-95"><div className="w-20 h-20 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mb-6 shadow-inner text-slate-400"><Lock size={40} strokeWidth={2.5} /></div><h3 className="text-2xl font-black text-slate-800 dark:text-white uppercase tracking-tighter mb-2">Fichas Bloqueadas</h3><p className="text-slate-500 dark:text-slate-400 font-medium max-w-xs text-sm">Aguardando o administrador liberar o período of votação. Fique atento aos avisos!</p></div>) : (<><div className="flex flex-wrap gap-1 overflow-x-auto no-scrollbar px-1">{['asc', 'desc', 'rank'].map(s => (<button key={s} onClick={() => setGridSort(s as any)} className={`px-3 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest border-2 transition-all active:scale-95 shadow-sm ${gridSort === s ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700'}`}>{s === 'asc' ? 'Crescente' : s === 'desc' ? 'Decrescente' : 'Melhores'}</button>))}</div><div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 px-0.5">{sortedGridPizzas.map((p, i) => <PizzaCard key={String(p.id)} index={i} data={p} userId={userId} isAdmin={isAdmin} onUpdate={handleUpdateScore} onConfirm={handleConfirmVote} onUpdateNote={handleUpdateNote} onUpdateGlobalNote={handleUpdateNoteGlobal} onDelete={handleDeletePizza} onUpdateDate={handleUpdateDate} rank={rankMap[String(p.id)]} peerCount={peerCount} onAddPhoto={handleAddMedia} language={language} ownerName={isAdmin ? PIZZA_OWNERS[Number(p.id)] : undefined} variant={gridMode} />)}</div></>)}</div>)}
+            {activeTab === 'charts' && isAdmin && (<div className="flex flex-col gap-4 animate-in fade-in duration-700"><div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-2"><div className="bg-white dark:bg-slate-900 p-4 rounded-3xl border-2 border-indigo-500 shadow-xl flex items-center justify-between gap-4"><div className="flex items-center gap-3"><div className="p-2 bg-indigo-600 rounded-xl text-white shadow-lg"><PlayCircle size={24} /></div><div><h3 className="font-black text-xs uppercase tracking-tight leading-none mb-1">Modo Espetáculo</h3><p className="text-[9px] text-slate-500 font-bold uppercase">Revelação de Resultados</p></div></div><button onClick={() => setTriggerRankReveal(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-md transition-all active:scale-95">Iniciar</button></div></div><RankingTable data={pizzas} language={language} pizzaOwners={PIZZA_OWNERS} triggerReveal={triggerRankReveal} onRevealComplete={handleRevealComplete} /></div>)}
+            {activeTab === 'album' && <UnifiedPhotoAlbum pizzas={pizzas} userId={userId} onAddMedia={handleAddMedia} onDeleteMedia={handleDeleteMedia} socialData={socialData} onAddComment={handleAddComment} onEditComment={handleEditComment} onDeleteComment={handleEditComment} onReact={handleMainReaction} onCommentReact={handleCommentReaction} onUpdateCaption={handleUpdateCaption} language={language} currentUser={currentUser} onReplyToComment={handleReplyToComment} onReplyReact={handleReplyReaction} onEditReply={handleEditReply} onDeleteReply={handleDeleteReply} uiScale={uiScale} />}
         </div>
       </main>
     </div>

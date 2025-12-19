@@ -125,9 +125,9 @@ export const translations = {
         extraBonusTitle: "BÔNUS EXTRA (Massa)",
         extraBonusDesc: "Valorize o trabalho artesanal! A pessoa que fizer a <b>massa da pizza</b> manualmente irá ganhar <b>1 ponto extra</b> na somatória final.<br><br>✨ <b>XP GANHO:</b> Ao receber este bônus (Estrela), você ganha <b>8.5% de XP</b>!",
         socialPointsTitle: "Engajamento Social",
-        socialPointsDesc: "Mostra o quanto você é participativo! Ganhe progresso interagindo com a comunidade.<br><br>❤️ <b>CURTIDAS:</b> Cada <b>Like</b> em fotos ou comentários dá <b>2.5% de XP</b> e <b>1 Ponto</b>.<br>💬 <b>COMENTÁRIOS:</b> Cada <b>Comentário</b> em postagens diferentes dá <b>2.5% de XP</b>.",
+        socialPointsDesc: "Mostra o quanto você é participativo! Ganhe progresso interagindo com a comunidade.<br><br>❤️ <b>CURTIDAS:</b> Cada <b>Like</b> em fotos ou comentários dá <b>1.3% de XP</b> e <b>1 Ponto</b>.<br>💬 <b>COMENTÁRIOS:</b> Cada <b>Comentário</b> em postagens diferentes dá <b>1.3% de XP</b>.",
         levelTitle: "Cálculo do Nível (XP)",
-        levelDesc: "Sua barra sobe combinando suas habilidades e engajamento:<br><br>✨ <b>Fórmula:</b> (Notas × 1.0%) + (Bônus × 8.5%) + (Likes × 2.5%) + (Comentários × 2.5%) = Progresso.",
+        levelDesc: "Sua barra sobe combinando suas habilidades e engajamento:<br><br>✨ <b>Fórmula:</b> (Notas × 1.0%) + (Bônus × 8.5%) + (Likes × 1.3%) + (Comentários × 1.3%) = Progresso.",
         prizeTitle: "Recompensa Especial",
         prizeDesc: "Ao alcançar o (nível máximo <b>5</b>), o Jurado / Jogador ganhará um <b>Prêmio com poder de escolha</b> em até <b>120 reais</b> em produtos da <b>Natura, Boticário, Avon ou Mary Kay</b> pelo seu empenho! 🎁",
         notifyPlayers: "Notificar Jogadores"
@@ -321,22 +321,22 @@ export const translations = {
         extraBonusTitle: "BONO EXTRA (Masa)",
         extraBonusDesc: "¡Valora el trabajo manual! La persona que haga la <b>masa de la pizza</b> ganará <b>1 punto extra</b>.<br><br>✨ <b>XP GANADO:</b> Al recibir este bono (Estrella), ¡ganas <b>8.5% de XP</b>!",
         socialPointsTitle: "Compromiso Social",
-        socialPointsDesc: "¡Demuestra tu participación! Gana puntos por interacciones.<br><br>❤️ <b>ME GUSTA:</b> Cada <b>Like</b> da <b>2.5% de XP</b> y <b>1 Punto</b>.<br>💬 <b>COMENTARIOS:</b> Cada <b>Comentario</b> da <b>2.5% de XP</b>.",
+        socialPointsDesc: "¡Demuestra tu participación! Gana puntos por interacciones.<br><br>❤️ <b>ME GUSTA:</b> Cada <b>Like</b> da <b>1.3% de XP</b> y <b>1 Punto</b>.<br>💬 <b>COMENTARIOS:</b> Cada <b>Comentario</b> da <b>1.3% de XP</b>.",
         levelTitle: "Cálculo de Nivel (XP)",
-        levelDesc: "Tu nivel sube combinando tus habilidades:<br><br>✨ <b>Fórmula:</b> (Notas × 1.0%) + (Bono × 8.5%) + (Likes × 2.5%) + (Comentarios × 2.5%) = Progreso.",
+        levelDesc: "Tu nivel sube combinando tus habilidades:<br><br>✨ <b>Fórmula:</b> (Notas × 1.0%) + (Bono × 8.5%) + (Likes × 1.3%) + (Comentarios × 1.3%) = Progreso.",
         prizeTitle: "Recompensa Especial",
         prizeDesc: "Al llegar al (nivel máximo <b>5</b>), ganarás un vale de regalo de 120 reales en productos de belleza por tu esfuerzo. 🎁",
         notifyPlayers: "Notificar Jugadores"
     },
     historyContent: {
         title: "Nuestra Historia",
-        subtitle: "Tradición, Sabor y Amistad",
+        subtitle: "Tradición, Sabor e Amistad",
         close: "Cerrar Libro",
         notify: "Notificar Cambio en la Historia",
         sections: [
             {
                 title: "El Comienzo de Todo",
-                text: "Todo comenzó como una pequeña reunión entre amigos apasionados por la cocina. La idea era simple: ¿quién hace la mejor pizza casera? Lo que iba a ser solo una cena se convirtió en una competición divertida."
+                text: "Todo comenzó como una pequeña reunión entre amigos apaixonados por la cocina. La idea era simple: ¿quién hace la mejor pizza casera? Lo que iba a ser solo una cena se convirtió en una competición divertida."
             },
             {
                 title: "La Evolución",
@@ -500,7 +500,7 @@ export const translations = {
         championDoce: "Sweet Grand Champion",
         finalScore: "Final Score",
         weakSignal: "WEAK SIGNAL",
-        reconnecting: "Reconnecting to main server",
+        reconnecting: "Reconectando al servidor principal",
         readyQuestion: "ARE YOU READY?",
         position: " Place"
     },
@@ -517,9 +517,9 @@ export const translations = {
         extraBonusTitle: "EXTRA BONUS (Dough)",
         extraBonusDesc: "Value craftsmanship! The person who makes the <b>pizza dough</b> manually will earn <b>1 extra point</b>.<br><br>✨ <b>XP GAIN:</b> By receiving this bonus (Star), you instantly gain <b>8.5% XP</b>!",
         socialPointsTitle: "Social Engagement",
-        socialPointsDesc: "Shows your active participation! Earn progress by interacting with others.<br><br>❤️ <b>LIKES:</b> Each <b>Like</b> gives <b>2.5% XP</b> and <b>1 Point</b>.<br>💬 <b>COMMENTS:</b> Each <b>Comment</b> gives <b>2.5% XP</b>.",
+        socialPointsDesc: "Shows your active participation! Earn progress by interacting with others.<br><br>❤️ <b>LIKES:</b> Each <b>Like</b> gives <b>1.3% XP</b> and <b>1 Point</b>.<br>💬 <b>COMMENTS:</b> Each <b>Comment</b> gives <b>1.3% XP</b>.",
         levelTitle: "Level Calculation (XP)",
-        levelDesc: "Your level rises by combining skills and engagement:<br><br>✨ <b>Formula:</b> (Scores × 1.0%) + (Bonus × 8.5%) + (Likes × 2.5%) + (Comments × 2.5%) = Progress.",
+        levelDesc: "Your level rises by combining skills and engagement:<br><br>✨ <b>Formula:</b> (Scores × 1.0%) + (Bonus × 8.5%) + (Likes × 1.3%) + (Comments × 1.3%) = Progress.",
         prizeTitle: "Special Reward",
         prizeDesc: "By reaching (max level <b>5</b>), you win a gift voucher worth 120 BRL to choose beauty products! 🎁",
         notifyPlayers: "Notify Players"

@@ -1,5 +1,5 @@
 
-export type MediaType = 'image' | 'video' | 'audio' | 'poll';
+export type MediaType = 'image' | 'video' | 'audio' | 'poll' | 'file';
 export type MediaCategory = 'pizza' | 'champion' | 'team';
 
 export interface PollData {
@@ -16,8 +16,9 @@ export interface MediaItem {
   category: MediaCategory;
   date: number;
   caption?: string; // Text overlay/phrase
-  hiddenFromFeed?: boolean; // New property to hide from NewsFeed
-  poll?: PollData; // Specific data for polls
+  fileName?: string; // Para arquivos genéricos
+  hiddenFromFeed?: boolean; 
+  poll?: PollData; 
 }
 
 export interface Reply {
@@ -44,61 +45,33 @@ export interface SocialData {
 
 export interface PizzaData {
   id: number | string;
-  // SALGADA (Default)
   beautyScores: Record<string, number>;
   tasteScores: Record<string, number>;
-  bonusScores?: Record<string, number>; // Novo campo para Bônus Salgada (0 ou 1)
-  
-  // DOCE (New)
+  bonusScores?: Record<string, number>; 
   beautyScoresDoce?: Record<string, number>;
   tasteScoresDoce?: Record<string, number>;
-  bonusScoresDoce?: Record<string, number>; // Novo campo para Bônus Doce (0 ou 1)
-
-  // Maps userId -> boolean (true if voted) - Shared or split? Assuming shared confirmation for simplicity, OR split logic in UI
+  bonusScoresDoce?: Record<string, number>; 
   confirmedVotes?: Record<string, boolean>;
-  
-  // Maps userId -> note
   userNotes?: Record<string, string>;
-  notes?: string; // Legacy/Global notes (optional)
-  media?: MediaItem[]; // Replaces photos
-  photos?: string[]; // Deprecated, kept for migration
-  scheduledDate?: string; // ISO Date string (YYYY-MM-DD)
-}
-
-export interface AnalysisResponse {
-  summary: string;
-  winner: string;
-  suggestion: string;
+  notes?: string; 
+  media?: MediaItem[]; 
+  photos?: string[]; 
+  scheduledDate?: string; 
 }
 
 export interface UserAccount {
     nickname: string;
     phone: string; 
-    password: string; // 4 digits
+    password: string; 
     isVerified: boolean;
-    avatar?: string; // Base64 image
-    cover?: string; // Base64 image for profile background
-    xpOffset?: number; // Offset para reset de nível (XP a ser subtraído)
-    pointsOffset?: number; // Offset para reset de pontos (Pontos a serem subtraídos)
+    avatar?: string; 
+    cover?: string; 
+    xpOffset?: number; 
+    pointsOffset?: number; 
+    legacyLikes?: number; 
+    legacyComments?: number; 
 }
 
-export enum SortOption {
-  ID = 'ID',
-  TOTAL = 'TOTAL',
-  BEAUTY = 'BEAUTY',
-  TASTE = 'TASTE'
-}
-
-// Helper to get average
-export const getAverage = (scores: Record<string, number> | undefined): number => {
-  if (!scores) return 0;
-  const values = Object.values(scores);
-  if (values.length === 0) return 0;
-  const sum = values.reduce((a, b) => a + b, 0);
-  return sum / values.length;
-};
-
-// Helper to get sum
 export const getSum = (scores: Record<string, number> | undefined): number => {
   if (!scores) return 0;
   const values = Object.values(scores);
@@ -106,7 +79,6 @@ export const getSum = (scores: Record<string, number> | undefined): number => {
   return values.reduce((a, b) => a + b, 0);
 };
 
-// Fix: Export getConfirmedSum to resolve module error in Charts.tsx
 export const getConfirmedSum = (pizza: PizzaData, category: 'salgada' | 'doce'): number => {
     let beautyScores, tasteScores, bonusScores;
     if (category === 'salgada') {

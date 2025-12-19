@@ -17,7 +17,7 @@ export const GamificationSimulation: React.FC<GamificationSimulationProps> = ({ 
     const steps = [
         {
             title: "Passo 1: Interação Social",
-            text: "Interagir te faz crescer! ❤️ Cada Like que você dá e 💬 cada Comentário enviado em fotos ou posts aumenta sua barra de nível em 2.5%!",
+            text: "Interagir te faz crescer! ❤️ Cada Like que você dá e 💬 cada Comentário enviado em fotos ou posts aumenta sua barra de nível em 1.3%!",
             icon: <div className="flex gap-2"><Heart className="text-red-500 fill-red-500 animate-pulse" size={24}/><MessageCircle className="text-blue-500 fill-blue-500 animate-bounce" size={24}/></div>,
             color: "bg-indigo-50 dark:bg-indigo-900/20"
         },

@@ -1,11 +1,10 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { UserAccount, PizzaData, SocialData } from '../types';
 import { processMediaFile } from '../services/imageService';
 import { authService } from '../services/authService';
 import { calculateUserLevel } from '../services/gamificationUtils';
 import { translations, Language } from '../services/translations';
-import { Camera, User, Zap, Star, Crown, Save, Loader2, ArrowLeft, ShieldCheck, Heart, Trash2, X, Search, Check, RefreshCcw, MessageCircle, Image as ImageIcon, HelpCircle } from 'lucide-react';
+import { Camera, User, Zap, Star, Crown, Save, Loader2, ArrowLeft, ShieldCheck, Heart, Trash2, X, Search, Check, RefreshCcw, MessageCircle, Image as ImageIcon, HelpCircle, MinusCircle, PlusCircle } from 'lucide-react';
 import { broadcastResetUserXP, broadcastUserUpdate } from '../services/p2pService';
 import { GamificationSimulation } from './GamificationSimulation';
 
@@ -98,34 +97,35 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
     };
 
     const handleResetUserXP = async (user: UserAccount) => {
-        if (confirm(`ZERAR EXPERIÊNCIA: Deseja realmente resetar ${user.nickname} para o Nível 1 com 0 pontos?`)) {
+        if (confirm(`ZERAR PROGRESSO: Deseja realmente resetar ${user.nickname} para o Nível 1 com 0 pontos?`)) {
             setIsLoading(true);
             try {
-                // Calcula os valores brutos acumulados atualmente (desconsiderando offsets antigos)
-                // Para zerar, o novo offset deve ser igual ao valor bruto total
                 const userStats = calculateUserLevel(user, pizzas, socialData, pizzaOwners);
-                
-                // Define os offsets para que a subtração resulte em 0
                 const updated = await authService.updateUser(user.nickname, { 
                     xpOffset: userStats.rawProgress, 
                     pointsOffset: userStats.totalDisplayPointsRaw 
                 });
-                
-                // Broadcast P2P para forçar reload e sincronia nos outros clientes
                 broadcastResetUserXP({ targetNickname: user.nickname, resetTime: Date.now() });
                 broadcastUserUpdate(updated);
-                
-                if (currentUser.nickname === user.nickname) {
-                    window.location.reload();
-                } else {
-                    alert(`Experiência de ${user.nickname} zerada com sucesso!`);
-                    setShowResetList(false);
-                }
-            } catch (err) {
-                alert("Erro ao zerar experiência. Verifique sua conexão.");
-            } finally {
-                setIsLoading(false);
-            }
+                if (currentUser.nickname === user.nickname) window.location.reload();
+                else { alert(`Experiência de ${user.nickname} zerada!`); setShowResetList(false); }
+            } catch (err) { alert("Erro ao zerar experiência."); } finally { setIsLoading(false); }
+        }
+    };
+
+    const handleAdjustPoints = async (user: UserAccount, amount: number) => {
+        const actionLabel = amount > 0 ? "remover" : "adicionar";
+        if (confirm(`AJUSTE MANUAL: Deseja realmente ${actionLabel} ${Math.abs(amount)} pontos de ${user.nickname}?`)) {
+            setIsLoading(true);
+            try {
+                const updated = await authService.updateUser(user.nickname, { 
+                    xpOffset: (user.xpOffset || 0) + amount, 
+                    pointsOffset: (user.pointsOffset || 0) + amount 
+                });
+                broadcastResetUserXP({ targetNickname: user.nickname, resetTime: Date.now() });
+                broadcastUserUpdate(updated);
+                alert(`Ajuste de ${amount} pontos aplicado a ${user.nickname}.`);
+            } catch (err) { alert("Erro ao ajustar pontos."); } finally { setIsLoading(false); }
         }
     };
 
@@ -134,7 +134,6 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
             setIsLoading(true);
             try {
                 const allPlayers = authService.getUsers().filter(u => u.nickname !== '@Leonardo');
-                
                 await Promise.all(allPlayers.map(async (player) => {
                     const stats = calculateUserLevel(player, pizzas, socialData, pizzaOwners);
                     const updated = await authService.updateUser(player.nickname, { 
@@ -143,17 +142,11 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                     });
                     broadcastUserUpdate(updated);
                 }));
-
                 broadcastResetUserXP({ targetNickname: 'ALL', resetTime: Date.now() });
                 alert("Todos os perfis foram zerados com sucesso!");
                 setShowResetList(false);
                 window.location.reload();
-            } catch (err) {
-                console.error(err);
-                alert("Erro ao zerar experiência global.");
-            } finally {
-                setIsLoading(false);
-            }
+            } catch (err) { alert("Erro ao zerar experiência global."); } finally { setIsLoading(false); }
         }
     };
 
@@ -174,34 +167,40 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                 <div className="fixed inset-0 z-[300] bg-black/60 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
                     <div className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden border border-slate-200 dark:border-slate-800 flex flex-col max-h-[85vh]">
                         <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
-                            <h3 className="font-black text-xs uppercase text-slate-500">Zerar Progresso (Admin)</h3>
+                            <h3 className="font-black text-xs uppercase text-slate-500 tracking-widest">Gestão de Jurados (Admin)</h3>
                             <button onClick={() => setShowResetList(false)} className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
                         </div>
 
                         <div className="p-4 bg-red-50 dark:bg-red-900/10 border-b border-red-100 dark:border-red-900/20">
-                            <button 
-                                onClick={handleResetAllXP}
-                                disabled={isLoading}
-                                className="w-full bg-red-600 hover:bg-red-700 text-white font-black py-3 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-red-500/20 transition-all active:scale-95 text-xs uppercase tracking-widest"
-                            >
-                                {isLoading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCcw size={16} />} Zerar Experiência de Todos
-                            </button>
-                            <p className="text-[9px] text-red-500 dark:text-red-400 font-bold mt-2 text-center uppercase tracking-tighter">Zerar Pontos e Nível de Todos</p>
+                            <button onClick={handleResetAllXP} disabled={isLoading} className="w-full bg-red-600 hover:bg-red-700 text-white font-black py-3 rounded-xl flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95 text-[10px] uppercase tracking-widest">{isLoading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCcw size={16} />} Zerar Experiência de Todos</button>
                         </div>
 
                         <div className="p-3 border-b border-slate-100 dark:border-slate-800">
                             <div className="relative">
                                 <Search className="absolute left-3 top-2.5 text-slate-400" size={14} />
-                                <input type="text" placeholder="Buscar perfil..." className="w-full pl-9 pr-4 py-2 bg-slate-100 dark:bg-slate-800 border-none rounded-xl text-xs outline-none focus:ring-2 focus:ring-indigo-500" value={resetSearch} onChange={(e) => setResetSearch(e.target.value)} />
+                                <input type="text" placeholder="Buscar perfil (ex: @Elisa)..." className="w-full pl-9 pr-4 py-2 bg-slate-100 dark:bg-slate-800 border-none rounded-xl text-xs outline-none focus:ring-2 focus:ring-indigo-500" value={resetSearch} onChange={(e) => setResetSearch(e.target.value)} />
                             </div>
                         </div>
-                        <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
+                        <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
                             {filteredUsers.length === 0 ? <p className="text-center py-8 text-xs text-slate-400">Nenhum perfil encontrado</p> : filteredUsers.map(user => (
-                                <button key={user.nickname} onClick={() => handleResetUserXP(user)} className="w-full flex items-center gap-3 p-3 hover:bg-indigo-50 dark:hover:bg-slate-800 rounded-2xl transition-colors text-left group border border-transparent hover:border-indigo-100 dark:hover:border-slate-700">
+                                <div key={user.nickname} className="w-full flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800/40 rounded-2xl border border-slate-100 dark:border-slate-700/50">
                                     <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center shrink-0 overflow-hidden border border-slate-200 dark:border-slate-600">{user.avatar ? <img src={user.avatar} className="w-full h-full object-cover" /> : <User size={20} className="text-slate-400" />}</div>
-                                    <div className="flex-1 min-w-0"><span className="block font-bold text-slate-700 dark:text-slate-200 text-sm truncate">{user.nickname}</span><span className="text-[10px] text-slate-400 uppercase font-black">Nível {calculateUserLevel(user, pizzas, socialData, pizzaOwners).level}</span></div>
-                                    <RefreshCcw size={16} className="text-red-400 group-hover:text-red-600 opacity-0 group-hover:opacity-100 transition-all" />
-                                </button>
+                                    <div className="flex-1 min-w-0"><span className="block font-bold text-slate-700 dark:text-slate-200 text-sm truncate">{user.nickname}</span><span className="text-[9px] text-slate-400 uppercase font-black">Nível {calculateUserLevel(user, pizzas, socialData, pizzaOwners).level}</span></div>
+                                    <div className="flex items-center gap-1">
+                                        <button onClick={() => handleAdjustPoints(user, 20)} className="p-2 bg-orange-100 text-orange-600 rounded-lg hover:bg-orange-600 hover:text-white transition-all shadow-sm" title="Remover 20 pontos">
+                                            <span className="text-[8px] font-black leading-none">-20</span>
+                                        </button>
+                                        <button onClick={() => {
+                                            const amt = prompt(`Quanto de XP/Pontos remover de ${user.nickname}?`, "0");
+                                            if (amt) handleAdjustPoints(user, parseFloat(amt));
+                                        }} className="p-2 bg-indigo-100 text-indigo-600 rounded-lg hover:bg-indigo-600 hover:text-white transition-all shadow-sm">
+                                            <MinusCircle size={14} />
+                                        </button>
+                                        <button onClick={() => handleResetUserXP(user)} className="p-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-600 hover:text-white transition-all shadow-sm">
+                                            <RefreshCcw size={14} />
+                                        </button>
+                                    </div>
+                                </div>
                             ))}
                         </div>
                     </div>
@@ -213,7 +212,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                     <div className={`h-32 relative overflow-hidden group ${!formData.cover ? (isAdmin ? 'bg-gradient-to-br from-slate-700 via-slate-800 to-black' : 'bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500') : ''}`}>
                         {formData.cover ? <img src={formData.cover} className="w-full h-full object-cover" alt="Cover" /> : <div className="absolute top-0 left-0 w-full h-full opacity-20" style={{ backgroundImage: 'radial-gradient(circle, #fff 10%, transparent 10%)', backgroundSize: '20px 20px' }}></div>}
                         {isEditing && <button onClick={() => coverInputRef.current?.click()} className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white gap-1 z-20"><ImageIcon size={24} /><span className="text-[10px] font-black uppercase tracking-widest">Alterar Capa</span></button>}
-                        {isAdmin && <div className="absolute top-4 left-6 flex items-center gap-3 z-10"><div className="text-white/30"><ShieldCheck size={48} /></div><button onClick={() => setShowResetList(true)} className="bg-red-600 hover:bg-red-700 text-white text-[9px] font-black uppercase px-3 py-1 rounded-full shadow-lg transition-all active:scale-90 border border-red-400/30 whitespace-nowrap">ZERAR EXPERIÊNCIA</button></div>}
+                        {isAdmin && <div className="absolute top-4 left-6 flex items-center gap-3 z-10"><div className="text-white/30"><ShieldCheck size={48} /></div><button onClick={() => setShowResetList(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white text-[9px] font-black uppercase px-4 py-1.5 rounded-full shadow-lg transition-all active:scale-90 border border-indigo-400/30 whitespace-nowrap tracking-widest">GERENCIAR PONTOS</button></div>}
                         <input type="file" ref={coverInputRef} className="hidden" accept="image/*" onChange={(e) => handleFileChange(e, 'cover')} />
                     </div>
 

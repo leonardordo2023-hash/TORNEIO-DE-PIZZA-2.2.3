@@ -8,6 +8,7 @@ const ROOM_ID = 'pizzagrade-universe-v12-final';
 
 let room: any = null;
 let heartbeatInterval: any = null; 
+let lastInitTime = 0;
 
 let sendVoteAction: any;
 let sendConfirmVoteAction: any;
@@ -27,6 +28,8 @@ let sendCommentDeleteAction: any;
 let sendReactionAction: any;
 let sendCommentReactionAction: any;
 let sendReplyAction: any;
+let sendReplyEditAction: any;
+let sendReplyDeleteAction: any;
 let sendReplyReactionAction: any;
 let sendPollVoteAction: any;
 let sendAppNotificationAction: any;
@@ -116,6 +119,19 @@ export interface ReplyPayload {
     reply: Reply;
 }
 
+export interface ReplyEditPayload {
+    mediaId: string;
+    commentId: string;
+    replyId: string;
+    newText: string;
+}
+
+export interface ReplyDeletePayload {
+    mediaId: string;
+    commentId: string;
+    replyId: string;
+}
+
 export interface ReplyReactionPayload {
     mediaId: string;
     commentId: string;
@@ -171,6 +187,8 @@ export interface SyncCallbacks {
   onReactionUpdate: (payload: ReactionPayload) => void;
   onCommentReactionUpdate: (payload: CommentReactionPayload) => void;
   onReplyAdd: (payload: ReplyPayload) => void;
+  onReplyEdit: (payload: ReplyEditPayload) => void;
+  onReplyDelete: (payload: ReplyDeletePayload) => void;
   onReplyReactionUpdate: (payload: ReplyReactionPayload) => void;
   onReplyToCommentAction?: (mediaId: string, commentId: string, text: string) => void;
   onPollVoteUpdate: (payload: PollVotePayload) => void;
@@ -185,11 +203,15 @@ export const initializeP2P = ({
     onVoteUpdate, onVoteConfirm, onGlobalNoteUpdate, onFullSync, onPeerCountChange, onReset, onDelete, onAddPizza,
     onMediaAdd, onMediaUpdate, onMediaDelete, onDateUpdate, 
     onCommentAdd, onCommentEdit, onCommentDelete, onReactionUpdate, onCommentReactionUpdate,
-    onReplyAdd, onReplyReactionUpdate, onPollVoteUpdate, onAppNotification, onResetUserXP, onUserUpdate, onPresence,
+    onReplyAdd, onReplyEdit, onReplyDelete, onReplyReactionUpdate, onPollVoteUpdate, onAppNotification, onResetUserXP, onUserUpdate, onPresence,
     getCurrentState 
 }: SyncCallbacks) => {
   const config = { appId: 'pizzagrade-live-app-v11' };
   
+  const now = Date.now();
+  if (room && (now - lastInitTime < 5000)) return room;
+  lastInitTime = now;
+
   if (room) try { if(room.leave) room.leave(); room = null; } catch (e) {}
   if (heartbeatInterval) clearInterval(heartbeatInterval);
 
@@ -220,10 +242,13 @@ export const initializeP2P = ({
   const [sendReaction, getReaction] = room.makeAction('react');
   const [sendCommentReaction, getCommentReaction] = room.makeAction('reactComment');
   const [sendReply, getReply] = room.makeAction('addReply');
+  const [sendReplyEdit, getReplyEdit] = room.makeAction('editReply');
+  const [sendReplyDelete, getReplyDelete] = room.makeAction('delReply');
   const [sendReplyReaction, getReplyReaction] = room.makeAction('reactReply');
   const [sendPollVote, getPollVote] = room.makeAction('votePoll');
   const [sendAppNotification, getAppNotification] = room.makeAction('appNotif');
-  const [sendResetXP, getResetXP] = room.makeAction('resetXP');
+  // Fixed: Use sendResetUserXP name for consistency and to resolve potential 'Cannot find name' errors in subsequent code
+  const [sendResetUserXP, getResetXP] = room.makeAction('resetXP');
   const [sendUserUpdate, getUserUpdate] = room.makeAction('userUpd');
   const [sendPresence, getPresence] = room.makeAction('presence');
   const [sendHeartbeat, getHeartbeat] = room.makeAction('hb');
@@ -246,10 +271,12 @@ export const initializeP2P = ({
   sendReactionAction = sendReaction;
   sendCommentReactionAction = sendCommentReaction;
   sendReplyAction = sendReply;
+  sendReplyEditAction = sendReplyEdit;
+  sendReplyDeleteAction = sendReplyDelete;
   sendReplyReactionAction = sendReplyReaction;
   sendPollVoteAction = sendPollVote;
   sendAppNotificationAction = sendAppNotification;
-  sendResetUserXPAction = sendResetXP;
+  sendResetUserXPAction = sendResetUserXP;
   sendUserUpdateAction = sendUserUpdate;
   sendPresenceAction = sendPresence;
 
@@ -274,10 +301,12 @@ export const initializeP2P = ({
   getReaction(onReactionUpdate);
   getCommentReaction(onCommentReactionUpdate);
   getReply((p: any) => { p.reply.text = securityService.sanitizeInput(p.reply.text); onReplyAdd(p); });
+  getReplyEdit((p: any) => { p.newText = securityService.sanitizeInput(p.newText); onReplyEdit(p); });
+  getReplyDelete(onReplyDelete);
   getReplyReaction(onReplyReactionUpdate);
   getPollVote(onPollVoteUpdate);
   getAppNotification(onAppNotification);
-  // Ensure we use the correct variable onResetUserXP from destructuring at line 162
+  
   if (onResetUserXP) getResetXP(onResetUserXP);
   if (onUserUpdate) getUserUpdate(onUserUpdate);
   if (onPresence) getPresence(onPresence);
@@ -334,6 +363,8 @@ export const broadcastCommentDelete = (p: CommentDeletePayload) => cleanSend(sen
 export const broadcastReaction = (p: ReactionPayload) => cleanSend(sendReactionAction, p);
 export const broadcastCommentReaction = (p: CommentReactionPayload) => cleanSend(sendCommentReactionAction, p);
 export const broadcastReply = (p: ReplyPayload) => cleanSend(sendReplyAction, p);
+export const broadcastReplyEdit = (p: ReplyEditPayload) => cleanSend(sendReplyEditAction, p);
+export const broadcastReplyDelete = (p: ReplyDeletePayload) => cleanSend(sendReplyDeleteAction, p);
 export const broadcastReplyReaction = (p: ReplyReactionPayload) => cleanSend(sendReplyReactionAction, p);
 export const broadcastPollVote = (p: PollVotePayload) => cleanSend(sendPollVoteAction, p);
 export const broadcastAppNotification = (p: AppNotificationPayload) => cleanSend(sendAppNotificationAction, p);

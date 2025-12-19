@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { X, Globe, Settings as SettingsIcon, Loader2, Download, Upload, Database, ChevronRight, ArrowLeft, Palette, Sun, Moon, Check, HardDrive, Smartphone, Zap, History, Save, Trash2, RotateCcw, Droplet, Star, Sparkles, Leaf, Cloud, CloudOff, AlertCircle, Copy, RefreshCw, Bell } from 'lucide-react';
 import { UserAccount, PizzaData, SocialData } from '../types';
@@ -106,23 +107,31 @@ CREATE TABLE IF NOT EXISTS public.users (
   nickname TEXT PRIMARY KEY,
   phone TEXT,
   password TEXT,
-  isVerified BOOLEAN DEFAULT true,
   avatar TEXT,
   cover TEXT,
-  "xpOffset" FLOAT8 DEFAULT 0,
-  "pointsOffset" FLOAT8 DEFAULT 0,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- Tabela para persistência de Fotos Binárias (Base64)
+CREATE TABLE IF NOT EXISTS public.media_registry (
+  id TEXT PRIMARY KEY,
+  url TEXT NOT NULL,
+  type TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
 
 -- 2. Habilitar Realtime
 ALTER PUBLICATION supabase_realtime ADD TABLE app_state;
 
--- 3. Habilitar RLS e criar políticas para permitir acesso anônimo total (Correção de Auth Erros)
+-- 3. Habilitar RLS e criar políticas
 ALTER TABLE public.app_state ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Acesso total anonimo app_state" ON public.app_state FOR ALL TO anon USING (true) WITH CHECK (true);
 
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Acesso total anonimo users" ON public.users FOR ALL TO anon USING (true) WITH CHECK (true);
+
+ALTER TABLE public.media_registry ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Acesso total anonimo media_registry" ON public.media_registry FOR ALL TO anon USING (true) WITH CHECK (true);
 `.trim();
 
     const handleCopySQL = () => {
@@ -210,7 +219,7 @@ CREATE POLICY "Acesso total anonimo users" ON public.users FOR ALL TO anon USING
                         <div className="space-y-4 animate-in slide-in-from-right duration-300">
                             <div className="p-4 bg-orange-100 dark:bg-orange-900/30 rounded-2xl border border-orange-200 dark:border-orange-800">
                                 <h3 className="text-sm font-black text-orange-700 dark:text-orange-300 uppercase mb-2">Correção de Permissão</h3>
-                                <p className="text-xs text-orange-600 dark:text-orange-400 leading-relaxed">Se estiver recebendo erros de "Not Authorized", você precisa rodar este novo script que habilita o **RLS** para o acesso anônimo.</p>
+                                <p className="text-xs text-orange-600 dark:text-orange-400 leading-relaxed">Se estiver recebendo erros de "Not Authorized" ou restrições de conflito, você precisa rodar este novo script que define corretamente a **PRIMARY KEY** e o **RLS**.</p>
                             </div>
                             <div className="space-y-2">
                                 <h4 className="text-[10px] font-black uppercase text-slate-400 ml-1">Script para o SQL Editor</h4>

@@ -66,18 +66,16 @@ export const authService = {
 
     registerUser: async (user: UserAccount): Promise<void> => {
         try {
+            // Removido onConflict explícito para evitar erros de restrição ausente no cache do esquema
             const { error } = await supabase
                 .from('users')
                 .upsert({
                     nickname: user.nickname,
                     phone: user.phone,
                     password: user.password,
-                    isVerified: user.isVerified,
                     avatar: user.avatar || '',
-                    cover: user.cover || '',
-                    xpOffset: user.xpOffset || 0,
-                    pointsOffset: user.pointsOffset || 0
-                }, { onConflict: 'nickname' });
+                    cover: user.cover || ''
+                });
 
             if (error) {
                 const errorMsg = error.message || JSON.stringify(error);
@@ -121,9 +119,12 @@ export const authService = {
         const updatedUser = { ...users[userIndex], ...updates };
         
         try {
+            // Remove colunas estendidas das atualizações enviadas ao Supabase para evitar erros de esquema
+            const { isVerified, xpOffset, pointsOffset, ...cleanUpdates } = updates as any;
+            
             const { error } = await supabase
                 .from('users')
-                .update(securityService.deepClean(updates))
+                .update(securityService.deepClean(cleanUpdates))
                 .eq('nickname', currentNickname);
             
             if (error) throw new Error(error.message);

@@ -2,102 +2,52 @@
 import { MediaItem, MediaType } from "../types";
 
 /**
- * Compresses images and validates videos.
+ * Processa qualquer tipo de arquivo, suportando até 1GB.
+ * Identifica se é imagem, vídeo, áudio ou arquivo genérico.
  */
 export const processMediaFile = (
   file: File, 
-  maxVideoSizeMB: number = 50,
+  maxSizeMB: number = 1024,
   onProgress?: (percent: number) => void
-): Promise<{ url: string, type: MediaType }> => {
+): Promise<{ url: string, type: MediaType, fileName?: string }> => {
   return new Promise((resolve, reject) => {
-    // Handle Video
-    if (file.type.startsWith('video/')) {
-        if (file.size > maxVideoSizeMB * 1024 * 1024) {
-            reject(new Error(`Vídeo muito grande (${(file.size / 1024 / 1024).toFixed(1)}MB). Máximo permitido: ${maxVideoSizeMB}MB`));
-            return;
-        }
+    const isImage = file.type.startsWith('image/');
+    const isVideo = file.type.startsWith('video/');
+    const isAudio = file.type.startsWith('audio/');
 
-        const reader = new FileReader();
-        
-        reader.onprogress = (event) => {
-            if (event.lengthComputable && onProgress) {
-                const percent = Math.round((event.loaded / event.total) * 100);
-                onProgress(percent);
-            }
-        };
-
-        reader.onload = (e) => {
-            if (onProgress) onProgress(100);
-            resolve({
-                url: e.target?.result as string,
-                type: 'video'
-            });
-        };
-        
-        reader.onerror = (err) => reject(new Error("Erro ao ler o arquivo de vídeo."));
-        reader.readAsDataURL(file);
+    if (file.size > maxSizeMB * 1024 * 1024) {
+        reject(new Error(`Arquivo muito grande (${(file.size / 1024 / 1024).toFixed(1)}MB). Máximo permitido: ${maxSizeMB}MB`));
         return;
     }
 
-    // Handle Image (Compression with Memory Optimization)
-    const isHighQuality = maxVideoSizeMB > 50;
-    const maxWidth = isHighQuality ? 1920 : 1080; 
-    const maxHeight = isHighQuality ? 1920 : 1080;
-    const quality = isHighQuality ? 0.9 : 0.8;
-
-    const objectUrl = URL.createObjectURL(file);
-    const img = new Image();
-    img.src = objectUrl;
-
-    img.onload = () => {
-        if (onProgress) onProgress(50); // Simulação de progresso para imagens
-        let width = img.width;
-        let height = img.height;
-
-        if (width > height) {
-          if (width > maxWidth) {
-            height *= maxWidth / width;
-            width = maxWidth;
-          }
-        } else {
-          if (height > maxHeight) {
-            width *= maxHeight / height;
-            height = maxHeight;
-          }
+    const reader = new FileReader();
+    
+    reader.onprogress = (event) => {
+        if (event.lengthComputable && onProgress) {
+            const percent = Math.round((event.loaded / event.total) * 100);
+            onProgress(percent);
         }
+    };
 
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        
-        if (!ctx) {
-            URL.revokeObjectURL(objectUrl);
-            reject(new Error("Could not get canvas context"));
-            return;
-        }
-
-        ctx.drawImage(img, 0, 0, width, height);
-        
-        const dataUrl = canvas.toDataURL('image/jpeg', quality);
-        
-        URL.revokeObjectURL(objectUrl);
+    reader.onload = (e) => {
         if (onProgress) onProgress(100);
-        
+        let type: MediaType = 'file';
+        if (isImage) type = 'image';
+        else if (isVideo) type = 'video';
+        else if (isAudio) type = 'audio';
+
         resolve({
-            url: dataUrl,
-            type: 'image'
+            url: e.target?.result as string,
+            type,
+            fileName: file.name
         });
     };
-
-    img.onerror = (err) => {
-        URL.revokeObjectURL(objectUrl);
-        reject(new Error("Erro ao carregar a imagem. O arquivo pode estar corrompido."));
-    };
+    
+    reader.onerror = (err) => reject(new Error("Erro ao ler o arquivo."));
+    reader.readAsDataURL(file);
   });
 };
 
-// Legacy support
 export const compressImage = async (file: File): Promise<string> => {
     const res = await processMediaFile(file);
     return res.url;
