@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { UserAccount, PizzaData, SocialData } from '../types';
 import { processMediaFile } from '../services/imageService';
@@ -154,14 +155,18 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
     const filteredUsers = allUsers.filter(u => u.nickname.toLowerCase().includes(resetSearch.toLowerCase()));
 
     return (
-        <div className="fixed inset-0 z-[200] bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center overflow-hidden animate-in slide-in-from-bottom-10 duration-300">
+        <div className="fixed inset-0 z-[200] bg-slate-50 dark:bg-slate-950 flex flex-col items-center overflow-y-auto custom-scrollbar animate-in slide-in-from-bottom-10 duration-300">
             <GamificationSimulation isOpen={showGamiHelp} onClose={() => setShowGamiHelp(false)} />
             
-            <div className="absolute inset-0 overflow-hidden pointer-events-none">
+            <div className="fixed inset-0 overflow-hidden pointer-events-none">
                 <div className="absolute top-[-10%] left-[-10%] w-[70vw] h-[70vw] bg-orange-400/20 rounded-full blur-[80px] animate-float dark:bg-orange-900/20"></div>
                 <div className="absolute bottom-[-10%] right-[-10%] w-[60vw] h-[60vw] bg-purple-500/20 rounded-full blur-[90px] animate-float-delayed dark:bg-purple-900/20"></div>
             </div>
-            <button onClick={onClose} className="absolute top-6 left-6 z-50 p-3 bg-white/80 dark:bg-slate-800/80 backdrop-blur-md rounded-full text-slate-700 dark:text-slate-200 shadow-lg hover:scale-110 transition-transform"><ArrowLeft size={24} /></button>
+
+            {/* Botão de Voltar Fixo para não sumir no scroll */}
+            <div className="sticky top-0 w-full max-w-md px-4 sm:px-6 pt-4 sm:pt-6 z-50 flex justify-start pointer-events-none">
+                <button onClick={onClose} className="p-2 sm:p-3 bg-white/80 dark:bg-slate-800/80 backdrop-blur-md rounded-full text-slate-700 dark:text-slate-200 shadow-lg hover:scale-110 transition-transform pointer-events-auto"><ArrowLeft size={20} className="sm:w-6 sm:h-6" /></button>
+            </div>
 
             {showResetList && (
                 <div className="fixed inset-0 z-[300] bg-black/60 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
@@ -207,61 +212,61 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                 </div>
             )}
 
-            <div className="w-full max-w-md p-6 relative z-10 flex flex-col h-full md:h-auto justify-center">
-                <div className="relative overflow-hidden rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl">
-                    <div className={`h-32 relative overflow-hidden group ${!formData.cover ? (isAdmin ? 'bg-gradient-to-br from-slate-700 via-slate-800 to-black' : 'bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500') : ''}`}>
+            <div className="w-full max-w-md p-4 sm:p-6 relative z-10 flex flex-col min-h-full justify-center py-6 sm:py-10 landscape:py-4">
+                <div className="relative overflow-hidden rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl landscape:scale-[0.85] landscape:origin-top transition-transform">
+                    <div className={`h-24 sm:h-32 landscape:h-20 relative overflow-hidden group ${!formData.cover ? (isAdmin ? 'bg-gradient-to-br from-slate-700 via-slate-800 to-black' : 'bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500') : ''}`}>
                         {formData.cover ? <img src={formData.cover} className="w-full h-full object-cover" alt="Cover" /> : <div className="absolute top-0 left-0 w-full h-full opacity-20" style={{ backgroundImage: 'radial-gradient(circle, #fff 10%, transparent 10%)', backgroundSize: '20px 20px' }}></div>}
-                        {isEditing && <button onClick={() => coverInputRef.current?.click()} className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white gap-1 z-20"><ImageIcon size={24} /><span className="text-[10px] font-black uppercase tracking-widest">Alterar Capa</span></button>}
-                        {isAdmin && <div className="absolute top-4 left-6 flex items-center gap-3 z-10"><div className="text-white/30"><ShieldCheck size={48} /></div><button onClick={() => setShowResetList(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white text-[9px] font-black uppercase px-4 py-1.5 rounded-full shadow-lg transition-all active:scale-90 border border-indigo-400/30 whitespace-nowrap tracking-widest">GERENCIAR PONTOS</button></div>}
+                        {isEditing && <button onClick={() => coverInputRef.current?.click()} className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white gap-1 z-20"><ImageIcon size={24} /><span className="text-[10px] font-black uppercase tracking-widest text-center">Alterar Capa</span></button>}
+                        {isAdmin && <div className="absolute top-4 left-6 flex items-center gap-3 z-10 landscape:top-2"><div className="text-white/30"><ShieldCheck size={48} className="landscape:w-8 landscape:h-8" /></div><button onClick={() => setShowResetList(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white text-[8px] sm:text-[9px] font-black uppercase px-3 sm:px-4 py-1.5 rounded-full shadow-lg transition-all active:scale-90 border border-indigo-400/30 whitespace-nowrap tracking-widest">GERENCIAR PONTOS</button></div>}
                         <input type="file" ref={coverInputRef} className="hidden" accept="image/*" onChange={(e) => handleFileChange(e, 'cover')} />
                     </div>
 
-                    <div className="px-8 pb-8 relative">
-                        <div className="relative -mt-16 mb-4 inline-block group">
-                            <div className={`w-32 h-32 rounded-full border-4 border-white dark:border-slate-900 bg-white dark:bg-slate-800 flex items-center justify-center overflow-hidden shadow-xl relative z-10 transition-transform ${isEditing ? 'cursor-pointer' : ''}`} onClick={() => isEditing && fileInputRef.current?.click()}>
-                                {formData.avatar ? <img src={formData.avatar} alt="Avatar" className="w-full h-full object-cover" /> : <div className="w-full h-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-slate-400"><User size={48}/></div>}
-                                {isEditing && <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer z-20"><Camera className="text-white" size={32} /></div>}
+                    <div className="px-4 sm:px-8 pb-4 sm:pb-8 relative">
+                        <div className="relative -mt-10 sm:-mt-16 mb-2 sm:mb-4 inline-block group landscape:-mt-12">
+                            <div className={`w-24 h-24 sm:w-32 sm:h-32 landscape:w-20 landscape:h-20 rounded-full border-4 border-white dark:border-slate-900 bg-white dark:bg-slate-800 flex items-center justify-center overflow-hidden shadow-xl relative z-10 transition-transform ${isEditing ? 'cursor-pointer' : ''}`} onClick={() => isEditing && fileInputRef.current?.click()}>
+                                {formData.avatar ? <img src={formData.avatar} alt="Avatar" className="w-full h-full object-cover" /> : <div className="w-full h-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-slate-400"><User className="w-12 h-12 sm:w-16 sm:h-16 landscape:w-8 landscape:h-8" /></div>}
+                                {isEditing && <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer z-20"><Camera className="text-white" size={24} /></div>}
                             </div>
-                            <button onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }} className={`absolute bottom-1 left-0 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 p-1.5 rounded-full border-2 border-white dark:border-slate-900 z-30 shadow-sm transition-colors ${!isEditing && 'hidden'}`}><Camera size={14} /></button>
-                            <div className="absolute bottom-2 right-2 bg-yellow-400 text-yellow-900 text-xs font-black px-2 py-1 rounded-full border-2 border-white dark:border-slate-900 z-20 shadow-sm flex items-center gap-1 pointer-events-none"><Zap size={10} fill="currentColor" /> {stats.level}</div>
+                            <button onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }} className={`absolute bottom-1 left-0 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 p-1 rounded-full border-2 border-white dark:border-slate-900 z-30 shadow-sm transition-colors ${!isEditing && 'hidden'}`}><Camera size={12} /></button>
+                            <div className="absolute bottom-1 sm:bottom-2 right-1 sm:right-2 bg-yellow-400 text-yellow-900 text-[10px] sm:text-xs font-black px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full border-2 border-white dark:border-slate-900 z-20 shadow-sm flex items-center gap-1 pointer-events-none"><Zap size={8} fill="currentColor" /> {stats.level}</div>
                             <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={(e) => handleFileChange(e, 'avatar')} />
                         </div>
 
-                        <div className="text-center mb-6">
-                            {isEditing ? <div className="mb-4"><input type="text" value={formData.nickname} onChange={(e) => setFormData({...formData, nickname: e.target.value})} className="w-full text-center text-2xl font-black bg-slate-100 dark:bg-slate-800 border-none rounded-xl p-2 dark:text-white focus:ring-2 focus:ring-indigo-500" placeholder="@SeuApelido" disabled={isAdmin} /></div> : <div className="flex items-center justify-center gap-2 mb-1">{isAdmin ? <h1 className="text-3xl font-black text-slate-900 dark:text-white flex items-center gap-2">@ADMINISTRADOR <ShieldCheck className="text-blue-600 fill-blue-100 dark:fill-blue-900/50" size={28} /></h1> : <h1 className="text-3xl font-black text-slate-900 dark:text-white">{currentUser.nickname}</h1>}</div>}
-                            <p className={`text-sm font-bold flex items-center justify-center gap-1.5 ${isAdmin ? 'text-blue-600 dark:text-blue-400' : 'text-slate-500 dark:text-slate-400'}`}>{isAdmin ? 'Administrador' : 'Jurados'}</p>
-                            {error && <p className="text-red-500 text-xs font-bold mt-2 animate-pulse">{error}</p>}
-                            {success && <p className="text-green-500 text-xs font-bold mt-2 flex items-center justify-center gap-1"><Check size={12}/> {success}</p>}
+                        <div className="text-center mb-4 sm:mb-6 landscape:mb-2">
+                            {isEditing ? <div className="mb-2 sm:mb-4"><input type="text" value={formData.nickname} onChange={(e) => setFormData({...formData, nickname: e.target.value})} className="w-full text-center text-xl sm:text-2xl font-black bg-slate-100 dark:bg-slate-800 border-none rounded-xl p-1.5 sm:p-2 dark:text-white focus:ring-2 focus:ring-indigo-500" placeholder="@SeuApelido" disabled={isAdmin} /></div> : <div className="flex items-center justify-center gap-2 mb-0.5 sm:mb-1">{isAdmin ? <h1 className="text-xl sm:text-3xl font-black text-slate-900 dark:text-white flex items-center gap-2">@ADMINISTRADOR <ShieldCheck className="text-blue-600 fill-blue-100 dark:fill-blue-900/50" size={20} /></h1> : <h1 className="text-xl sm:text-3xl font-black text-slate-900 dark:text-white">{currentUser.nickname}</h1>}</div>}
+                            <p className={`text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 ${isAdmin ? 'text-blue-600 dark:text-blue-400' : 'text-slate-500 dark:text-slate-400'}`}>{isAdmin ? 'Administrador' : 'Jurados'}</p>
+                            {error && <p className="text-red-500 text-[10px] font-bold mt-1 animate-pulse">{error}</p>}
+                            {success && <p className="text-green-500 text-[10px] font-bold mt-1 flex items-center justify-center gap-1"><Check size={10}/> {success}</p>}
                         </div>
 
-                        <div className="grid grid-cols-3 gap-2 mb-6">
-                            <div className="bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-2xl border border-slate-100 dark:border-slate-800 flex flex-col items-center justify-center text-center">
-                                <span className="text-2xl font-black text-indigo-600 dark:text-indigo-400 leading-none mb-1">{stats.totalPoints.toFixed(1)}</span>
-                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-tight">Pontos</span>
+                        <div className="grid grid-cols-3 gap-2 mb-4 sm:mb-6 landscape:mb-2">
+                            <div className="bg-slate-50 dark:bg-slate-800/50 p-1.5 sm:p-2.5 rounded-2xl border border-slate-100 dark:border-slate-800 flex flex-col items-center justify-center text-center">
+                                <span className="text-xl sm:text-2xl font-black text-indigo-600 dark:text-indigo-400 leading-none mb-0.5 sm:mb-1">{stats.totalPoints.toFixed(1)}</span>
+                                <span className="text-[7px] sm:text-[9px] font-black text-slate-400 uppercase tracking-tight">Pontos</span>
                             </div>
-                            <div className="bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-2xl border border-slate-100 dark:border-slate-800 flex flex-col items-center justify-center text-center">
-                                <span className="text-2xl font-black text-red-500 dark:text-red-400 leading-none mb-1">{stats.likesGiven}</span>
-                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-tight">Likes</span>
+                            <div className="bg-slate-50 dark:bg-slate-800/50 p-1.5 sm:p-2.5 rounded-2xl border border-slate-100 dark:border-slate-800 flex flex-col items-center justify-center text-center">
+                                <span className="text-xl sm:text-2xl font-black text-red-500 dark:text-red-400 leading-none mb-0.5 sm:mb-1">{stats.likesGiven}</span>
+                                <span className="text-[7px] sm:text-[9px] font-black text-slate-400 uppercase tracking-tight">Likes</span>
                             </div>
-                            <div className="bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-2xl border border-slate-100 dark:border-slate-800 flex flex-col items-center justify-center text-center">
-                                <span className="text-2xl font-black text-blue-500 dark:text-blue-400 leading-none mb-1">{stats.commentsGiven}</span>
-                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-tight">Posts</span>
+                            <div className="bg-slate-50 dark:bg-slate-800/50 p-1.5 sm:p-2.5 rounded-2xl border border-slate-100 dark:border-slate-800 flex flex-col items-center justify-center text-center">
+                                <span className="text-xl sm:text-2xl font-black text-blue-500 dark:text-blue-400 leading-none mb-0.5 sm:mb-1">{stats.commentsGiven}</span>
+                                <span className="text-[7px] sm:text-[9px] font-black text-slate-400 uppercase tracking-tight">Posts</span>
                             </div>
                         </div>
 
-                        <div className="mb-6 text-center">
-                            <div className="flex justify-between text-xs font-bold text-slate-400 mb-2 items-center">
-                                <span className="flex items-center gap-2">
-                                    {stats.level === 5 ? 'Nível Máximo LENDÁRIO' : `Progresso Nível ${stats.level}`}
-                                    <button onClick={() => setShowGamiHelp(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-full px-2.5 py-1 flex items-center gap-1.5 shadow-lg shadow-indigo-500/20 transition-all active:scale-90 animate-pulse ring-2 ring-white dark:ring-slate-800"><span className="font-black text-[10px]">?</span><span className="text-[9px] font-black uppercase tracking-tighter">Ajuda</span></button>
+                        <div className="mb-4 sm:mb-6 text-center landscape:mb-3">
+                            <div className="flex justify-between text-[10px] sm:text-xs font-bold text-slate-400 mb-1.5 sm:mb-2 items-center">
+                                <span className="flex items-center gap-1.5">
+                                    {stats.level === 5 ? 'Nível Máximo LENDÁRIO' : `Nível ${stats.level}`}
+                                    <button onClick={() => setShowGamiHelp(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-full px-1.5 sm:px-2.5 py-0.5 sm:py-1 flex items-center gap-1 shadow-lg shadow-indigo-500/20 transition-all active:scale-90 animate-pulse ring-2 ring-white dark:ring-slate-800"><span className="font-black text-[8px] sm:text-[10px]">?</span><span className="text-[7px] sm:text-[9px] font-black uppercase tracking-tighter">Ajuda</span></button>
                                 </span>
                                 <span>{stats.currentBarProgress.toFixed(1)}%</span>
                             </div>
-                            <div className="w-full h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mb-2 shadow-inner"><div className="h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 transition-all duration-1000 ease-out" style={{ width: `${stats.currentBarProgress}%` }}></div></div>
-                            <span className="text-sm font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest bg-indigo-50 dark:bg-indigo-900/30 px-3 py-1 rounded-full border border-indigo-100 dark:border-indigo-800">{getLevelTitle(stats.level)}</span>
+                            <div className="w-full h-2 sm:h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mb-1.5 sm:mb-2 shadow-inner"><div className="h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 transition-all duration-1000 ease-out" style={{ width: `${stats.currentBarProgress}%` }}></div></div>
+                            <span className="text-xs sm:text-sm font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest bg-indigo-50 dark:bg-indigo-900/30 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full border border-indigo-100 dark:border-indigo-800">{getLevelTitle(stats.level)}</span>
                         </div>
 
-                        {isEditing ? <div className="flex gap-3"><button onClick={() => setIsEditing(false)} className="flex-1 py-4 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold rounded-xl">Cancelar</button><button onClick={handleSaveProfile} disabled={isLoading} className="flex-1 py-4 bg-indigo-600 text-white font-bold rounded-xl flex items-center justify-center gap-2">{isLoading ? <Loader2 size={20} className="animate-spin" /> : <Save size={20} />} Salvar</button></div> : <button onClick={() => setIsEditing(true)} className="w-full py-4 bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-bold rounded-xl shadow-lg transition-transform active:scale-95">Editar Perfil</button>}
+                        {isEditing ? <div className="flex gap-2 sm:gap-3"><button onClick={() => setIsEditing(false)} className="flex-1 py-3 sm:py-4 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold rounded-xl text-sm sm:text-base">Cancelar</button><button onClick={handleSaveProfile} disabled={isLoading} className="flex-1 py-3 sm:py-4 bg-indigo-600 text-white font-bold rounded-xl flex items-center justify-center gap-2 text-sm sm:text-base">{isLoading ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} Salvar</button></div> : <button onClick={() => setIsEditing(true)} className="w-full py-3 sm:py-4 bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-bold rounded-xl shadow-lg transition-transform active:scale-95 text-sm sm:text-base">Editar Perfil</button>}
                     </div>
                 </div>
             </div>

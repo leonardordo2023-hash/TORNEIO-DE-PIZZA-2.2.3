@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { ChevronRight, Search, X, ShieldCheck, Bell, Ban, Wifi, Sparkles, User, UserPlus, Trash2, Globe } from 'lucide-react';
+import { ChevronRight, Search, X, ShieldCheck, Bell, Ban, Wifi, Sparkles, User, UserPlus, Trash2, Globe, RotateCcw, Ghost } from 'lucide-react';
 import { UserAccount } from '../types';
 import { authService } from '../services/authService';
 import { Language, translations } from '../services/translations';
@@ -21,7 +21,9 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess, language, se
     const t = translations[language].auth;
     const [searchTerm, setSearchTerm] = useState('');
     const [storedUsers, setStoredUsers] = useState<UserAccount[]>([]);
+    const [deletedUsers, setDeletedUsers] = useState<UserAccount[]>([]);
     const [showAdminLogin, setShowAdminLogin] = useState(false);
+    const [showTrash, setShowTrash] = useState(false);
     const [showAddModal, setShowAddModal] = useState(false);
     const [adminPassword, setAdminPassword] = useState('');
     const [adminError, setAdminError] = useState('');
@@ -42,6 +44,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess, language, se
     const refreshUserList = async () => {
         const users = await authService.syncUsers();
         setStoredUsers(users);
+        setDeletedUsers(authService.getDeletedUsers());
     };
 
     useEffect(() => {
@@ -70,6 +73,16 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess, language, se
             } catch (err: any) {
                 alert("Error: " + err.message);
             }
+        }
+    };
+
+    const handleRestoreUser = async (nickname: string) => {
+        try {
+            await authService.restoreUser(nickname);
+            await refreshUserList();
+            alert(`Perfil ${nickname} restaurado!`);
+        } catch (err) {
+            alert("Erro ao restaurar perfil.");
         }
     };
 
@@ -179,18 +192,18 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess, language, se
                             filteredPlayers.map((u) => {
                                 const isOnline = onlineNicknames.includes(u.nickname);
                                 return (
-                                    <button 
+                                    <div 
                                         key={u.nickname} 
                                         onClick={() => handleLogin(u.nickname, 'player')} 
-                                        className={`relative flex flex-col items-center p-2 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl hover:border-orange-500 hover:shadow-xl transition-all text-center group shadow-sm ${isOnline ? 'ring-2 ring-green-500/30' : ''}`}
+                                        className={`relative flex flex-col items-center p-2 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl hover:border-orange-500 hover:shadow-xl transition-all text-center group shadow-sm cursor-pointer ${isOnline ? 'ring-2 ring-green-500/30' : ''}`}
                                     >
-                                        <button 
+                                        <div 
                                             onClick={(e) => handleDeleteUser(e, u.nickname)}
                                             className="absolute top-1 right-1 p-1 text-slate-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 z-20"
                                             title="Excluir Perfil"
                                         >
                                             <Trash2 size={10} />
-                                        </button>
+                                        </div>
 
                                         <div className="relative mb-1.5">
                                             <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center shrink-0 overflow-hidden border-2 border-slate-200 dark:border-slate-600 transition-transform group-hover:scale-110">
@@ -206,7 +219,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess, language, se
                                             <span className="font-black text-slate-800 dark:text-slate-100 text-[9px] truncate uppercase tracking-tight block">{u.nickname}</span>
                                             <span className="text-[7px] text-slate-400 font-black uppercase tracking-widest block opacity-70">Entrar</span>
                                         </div>
-                                    </button>
+                                    </div>
                                 );
                             })
                         ) : (
@@ -226,21 +239,64 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess, language, se
                             <span className="text-[10px] font-black uppercase tracking-widest">{t.addProfile}</span>
                         </button>
 
-                        <button onClick={() => setShowAdminLogin(true)} className="w-full flex items-center justify-between p-3 bg-slate-900 dark:bg-slate-800 text-white rounded-xl shadow-md transform hover:scale-[1.01] transition-all group">
-                            <div className="flex items-center gap-2">
-                                <div className="w-7 h-7 rounded-full overflow-hidden bg-white/10 border border-white/20">
-                                    <img src={DM_AVATAR_URL} className="w-full h-full object-cover" alt="Admin" />
+                        <div className="flex gap-2">
+                            <button onClick={() => setShowAdminLogin(true)} className="flex-1 flex items-center justify-between p-3 bg-slate-900 dark:bg-slate-800 text-white rounded-xl shadow-md transform hover:scale-[1.01] transition-all group">
+                                <div className="flex items-center gap-2">
+                                    <div className="w-7 h-7 rounded-full overflow-hidden bg-white/10 border border-white/20">
+                                        <img src={DM_AVATAR_URL} className="w-full h-full object-cover" alt="Admin" />
+                                    </div>
+                                    <span className="block font-bold text-[10px] flex items-center gap-1.5 tracking-wider uppercase">
+                                        {t.adminPanel} <ShieldCheck size={12} className="text-blue-400" /> 
+                                        {hasUnreadNotifications && <Bell size={12} className="text-red-500 animate-wiggle shrink-0" />}
+                                    </span>
                                 </div>
-                                <span className="block font-bold text-[10px] flex items-center gap-1.5 tracking-wider uppercase">
-                                    {t.adminPanel} <ShieldCheck size={12} className="text-blue-400" /> 
-                                    {hasUnreadNotifications && <Bell size={12} className="text-red-500 animate-wiggle shrink-0" />}
-                                </span>
-                            </div>
-                            <ChevronRight size={16} className="opacity-50" />
-                        </button>
+                                <ChevronRight size={16} className="opacity-50" />
+                            </button>
+                            
+                            {deletedUsers.length > 0 && (
+                                <button onClick={() => setShowTrash(true)} className="p-3 bg-slate-100 dark:bg-slate-800 text-slate-500 rounded-xl shadow-md hover:text-indigo-600 transition-all active:scale-95 group" title="Ver Lixeira">
+                                    <Ghost size={20} className="group-hover:animate-bounce" />
+                                </button>
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>
+
+            {showTrash && (
+                <div className="fixed inset-0 z-[400] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in">
+                    <div className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-[2.5rem] shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col max-h-[80vh] animate-in zoom-in-95">
+                        <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
+                            <div className="flex items-center gap-2">
+                                <Ghost size={20} className="text-indigo-500" />
+                                <h3 className="text-lg font-black uppercase tracking-tight text-slate-800 dark:text-white">Reativar Perfil</h3>
+                            </div>
+                            <button onClick={() => setShowTrash(false)} className="p-2 text-slate-400 hover:text-slate-600"><X size={24} /></button>
+                        </div>
+                        <div className="p-4 overflow-y-auto custom-scrollbar space-y-2">
+                            {deletedUsers.map(u => (
+                                <div key={u.nickname} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800/40 rounded-2xl border border-slate-100 dark:border-slate-800/50 group">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-full overflow-hidden border border-slate-200 dark:border-slate-700 bg-white">
+                                            {u.avatar ? <img src={u.avatar} className="w-full h-full object-cover" /> : <User size={20} className="text-slate-400 m-auto" />}
+                                        </div>
+                                        <span className="font-bold text-sm text-slate-700 dark:text-slate-200">{u.nickname}</span>
+                                    </div>
+                                    <button 
+                                        onClick={() => handleRestoreUser(u.nickname)} 
+                                        className="p-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-all shadow-sm flex items-center gap-1.5 font-black text-[9px] uppercase tracking-widest"
+                                    >
+                                        <RotateCcw size={14} /> Ativar
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="p-4 bg-slate-50 dark:bg-slate-800/50 text-center">
+                            <p className="text-[8px] font-black uppercase text-slate-400 tracking-widest">Toque para restaurar fotos e progresso do jurado</p>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {showAdminLogin && (
                 <div className="fixed inset-0 z-[250] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in">

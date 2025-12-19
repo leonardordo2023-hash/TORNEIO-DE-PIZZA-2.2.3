@@ -4,6 +4,7 @@ import { securityService } from "./securityService";
 import { supabase } from "./supabaseClient";
 
 const USERS_KEY = 'pizza_users_db';
+const DELETED_USERS_KEY = 'pizza_deleted_users_db';
 const CURRENT_USER_KEY = 'pizza_current_user';
 
 const REQUIRED_NAMES = [
@@ -64,9 +65,15 @@ export const authService = {
         } catch { return []; }
     },
 
+    getDeletedUsers: (): UserAccount[] => {
+        try {
+            const stored = localStorage.getItem(DELETED_USERS_KEY);
+            return stored ? JSON.parse(stored) : [];
+        } catch { return []; }
+    },
+
     registerUser: async (user: UserAccount): Promise<void> => {
         try {
-            // Removido onConflict explícito para evitar erros de restrição ausente no cache do esquema
             const { error } = await supabase
                 .from('users')
                 .upsert({
@@ -78,8 +85,7 @@ export const authService = {
                 });
 
             if (error) {
-                const errorMsg = error.message || JSON.stringify(error);
-                throw new Error(errorMsg);
+                throw new Error(error.message || JSON.stringify(error));
             }
 
             const users = authService.getUsers();
@@ -87,14 +93,30 @@ export const authService = {
                 users.push(user);
                 securityService.safeSetItem(USERS_KEY, JSON.stringify(securityService.deepClean(users)));
             }
+            
+            // Remove from trash if it was there
+            const deleted = authService.getDeletedUsers().filter(u => u.nickname.toLowerCase() !== user.nickname.toLowerCase());
+            securityService.safeSetItem(DELETED_USERS_KEY, JSON.stringify(securityService.deepClean(deleted)));
+            
         } catch (e: any) {
-            console.error("Error registering user in Supabase", e);
+            console.error("Error registering user", e);
             throw new Error(e.message || "Erro de conexão com o banco de dados.");
         }
     },
 
     deleteUser: async (nickname: string): Promise<void> => {
         try {
+            const users = authService.getUsers();
+            const userToDelete = users.find(u => u.nickname.toLowerCase() === nickname.toLowerCase());
+            
+            if (userToDelete) {
+                const deleted = authService.getDeletedUsers();
+                if (!deleted.some(u => u.nickname.toLowerCase() === nickname.toLowerCase())) {
+                    deleted.push(userToDelete);
+                    securityService.safeSetItem(DELETED_USERS_KEY, JSON.stringify(securityService.deepClean(deleted)));
+                }
+            }
+
             const { error } = await supabase
                 .from('users')
                 .delete()
@@ -102,11 +124,22 @@ export const authService = {
             
             if (error) throw new Error(error.message);
             
-            const users = authService.getUsers().filter(u => u.nickname !== nickname);
-            securityService.safeSetItem(USERS_KEY, JSON.stringify(securityService.deepClean(users)));
+            const remainingUsers = users.filter(u => u.nickname.toLowerCase() !== nickname.toLowerCase());
+            securityService.safeSetItem(USERS_KEY, JSON.stringify(securityService.deepClean(remainingUsers)));
         } catch (e: any) {
             console.error("Error deleting user", e);
             throw new Error(e.message || "Não foi possível excluir o perfil.");
+        }
+    },
+
+    restoreUser: async (nickname: string): Promise<void> => {
+        const deleted = authService.getDeletedUsers();
+        const userToRestore = deleted.find(u => u.nickname.toLowerCase() === nickname.toLowerCase());
+        
+        if (userToRestore) {
+            await authService.registerUser(userToRestore);
+            const remainingDeleted = deleted.filter(u => u.nickname.toLowerCase() !== nickname.toLowerCase());
+            securityService.safeSetItem(DELETED_USERS_KEY, JSON.stringify(securityService.deepClean(remainingDeleted)));
         }
     },
 
@@ -119,8 +152,7 @@ export const authService = {
         const updatedUser = { ...users[userIndex], ...updates };
         
         try {
-            // Remove colunas estendidas das atualizações enviadas ao Supabase para evitar erros de esquema
-            const { isVerified, xpOffset, pointsOffset, ...cleanUpdates } = updates as any;
+            const { isVerified, xpOffset, pointsOffset, legacyLikes, legacyComments, ...cleanUpdates } = updates as any;
             
             const { error } = await supabase
                 .from('users')
@@ -134,7 +166,11 @@ export const authService = {
 
         users[userIndex] = updatedUser;
         securityService.safeSetItem(USERS_KEY, JSON.stringify(securityService.deepClean(users)));
-        securityService.safeSetItem(CURRENT_USER_KEY, JSON.stringify(securityService.deepClean(updatedUser)));
+        
+        const currentUser = authService.getCurrentUser();
+        if (currentUser && currentUser.nickname.toLowerCase() === currentNickname.toLowerCase()) {
+            securityService.safeSetItem(CURRENT_USER_KEY, JSON.stringify(securityService.deepClean(updatedUser)));
+        }
         
         return updatedUser;
     },
