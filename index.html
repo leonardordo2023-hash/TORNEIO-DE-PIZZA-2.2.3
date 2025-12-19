@@ -1,6 +1,6 @@
 
 <!DOCTYPE html>
-<html lang="en" translate="no">
+<html lang="pt-BR" translate="no">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
@@ -26,16 +26,20 @@
                 950: '#0f172a',
               }
             },
+            borderRadius: {
+              '4xl': '2rem',
+              '5xl': '3rem',
+            },
             animation: {
               'bounce-slow': 'bounce 3s infinite',
               'pulse-fast': 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+              'pulse-slow': 'pulse-slow 8s ease-in-out infinite',
               'wiggle': 'wiggle 1s ease-in-out infinite',
               'float': 'float 6s ease-in-out infinite',
               'float-delayed': 'float 6s ease-in-out 3s infinite',
-              'pulse-slow': 'pulse 6s cubic-bezier(0.4, 0, 0.6, 1) infinite',
               'gradient-slow': 'gradient-slow 15s ease infinite',
               'sound-bar': 'sound-bar 0.8s ease-in-out infinite',
-              'sound-wave': 'sound-wave 1.5s ease-out infinite',
+              'fade-in-up': 'fade-in-up 0.5s ease-out forwards',
             },
             keyframes: {
               wiggle: {
@@ -46,6 +50,10 @@
                 '0%, 100%': { transform: 'translateY(0)' },
                 '50%': { transform: 'translateY(-20px)' },
               },
+              'pulse-slow': {
+                '0%, 100%': { opacity: '0.3', transform: 'scale(1)' },
+                '50%': { opacity: '0.6', transform: 'scale(1.1)' },
+              },
               'gradient-slow': {
                 '0%, 100%': { 'background-position': '0% 50%' },
                 '50%': { 'background-position': '100% 50%' },
@@ -54,9 +62,9 @@
                 '0%, 100%': { transform: 'scaleY(0.4)', opacity: '0.5' },
                 '50%': { transform: 'scaleY(1.2)', opacity: '1' }
               },
-              'sound-wave': {
-                '0%': { transform: 'scale(0.8)', opacity: '0.8' },
-                '100%': { transform: 'scale(2)', opacity: '0' }
+              'fade-in-up': {
+                '0%': { opacity: '0', transform: 'translateY(20px)' },
+                '100%': { opacity: '1', transform: 'translateY(0)' }
               }
             }
           }
@@ -64,21 +72,41 @@
       }
     </script>
     <style>
+      :root {
+        --sat: env(safe-area-inset-top);
+        --sar: env(safe-area-inset-right);
+        --sab: env(safe-area-inset-bottom);
+        --sal: env(safe-area-inset-left);
+      }
       body {
         overscroll-behavior-y: none;
         -webkit-tap-highlight-color: transparent;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        text-rendering: optimizeLegibility;
       }
+      button, a {
+        user-select: none;
+        touch-action: manipulation;
+      }
+      .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+      .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(100, 116, 139, 0.2); border-radius: 10px; }
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      
+      /* Sombras Premium */
+      .shadow-premium { box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1); }
+      
+      /* Blur Progressivo */
+      .glass { backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+      
+      /* Safe Areas */
+      .pb-safe { padding-bottom: var(--sab); }
+      .pt-safe { padding-top: var(--sat); }
+      
       .theme-baby-blue-animate { background: linear-gradient(-45deg, #e0f2fe, #f0f9ff, #dcfce7, #bae6fd); background-size: 400% 400%; animation: gradient-slow 15s ease infinite; }
       .theme-pink-animate { background: linear-gradient(-45deg, #fdf2f8, #fce7f3, #fdf4ff, #fae8ff); background-size: 400% 400%; animation: gradient-slow 12s ease infinite; }
       .theme-purple-animate { background: linear-gradient(-45deg, #f5f3ff, #ede9fe, #ddd6fe, #c4b5fd); background-size: 400% 400%; animation: gradient-slow 15s ease infinite; }
       .theme-green-animate { background: linear-gradient(-45deg, #f0fdf4, #dcfce7, #bbf7d0, #86efac); background-size: 400% 400%; animation: gradient-slow 15s ease infinite; }
-      ::-webkit-scrollbar { width: 8px; height: 8px; }
-      ::-webkit-scrollbar-track { background: #f1f5f9; }
-      .dark ::-webkit-scrollbar-track { background: #1e293b; }
-      ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
-      .dark ::-webkit-scrollbar-thumb { background: #475569; }
-      .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
-      .pt-safe { padding-top: env(safe-area-inset-top); }
     </style>
   <script type="importmap">
 {
@@ -100,7 +128,7 @@
 }
 </script>
 </head>
-  <body class="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 transition-colors duration-300 notranslate">
+  <body class="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 transition-colors duration-300 notranslate selection:bg-indigo-100 selection:text-indigo-900">
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
   </body>

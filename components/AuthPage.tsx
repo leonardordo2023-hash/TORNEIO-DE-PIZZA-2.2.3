@@ -94,11 +94,16 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess, language, se
         }
     };
 
+    // Função para normalizar texto (remover acentos) para busca mais precisa
+    const normalize = (text: string) => text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
     const filteredPlayers = storedUsers
-        .filter(u => 
-            u.nickname !== '@Leonardo' && 
-            u.nickname.toLowerCase().includes(searchTerm.toLowerCase())
-        )
+        .filter(u => {
+            const nick = u.nickname.toLowerCase();
+            const isAdmin = nick === '@leonardo';
+            const matchesSearch = normalize(u.nickname).includes(normalize(searchTerm));
+            return !isAdmin && matchesSearch;
+        })
         .sort((a, b) => a.nickname.localeCompare(b.nickname, 'pt', { sensitivity: 'base' }));
 
     return (

@@ -4,6 +4,8 @@
  * Provides data integrity checks and basic input sanitization for the app.
  */
 
+import { PizzaData } from "../types";
+
 export interface SecurityReport {
     status: 'secure' | 'warning' | 'critical';
     issuesFound: string[];
@@ -23,6 +25,48 @@ export const securityService = {
             .replace(/<script\b[^>]*>([\s\S]*?)<\/script>/gim, "")
             .replace(/<[^>]+>/g, "") // Remove HTML tags
             .trim();
+    },
+
+    /**
+     * Attempts to save an item to localStorage catching QuotaExceeded errors.
+     */
+    safeSetItem: (key: string, value: string) => {
+        try {
+            localStorage.setItem(key, value);
+        } catch (e) {
+            // Check if it is a quota error
+            if (e instanceof DOMException && (
+                e.code === 22 || 
+                e.code === 1014 || 
+                e.name === 'QuotaExceededError' || 
+                e.name === 'NS_ERROR_DOM_QUOTA_REACHED'
+            )) {
+                console.warn(`LocalStorage quota exceeded for key: ${key}. Cleaning non-essential data.`);
+                // Clear less critical storage
+                localStorage.removeItem('pizza_notifications');
+                // Try again one last time
+                try {
+                    localStorage.setItem(key, value);
+                } catch (retryError) {
+                    console.error("Critical: Could not save even after cleanup.", retryError);
+                }
+            }
+        }
+    },
+
+    /**
+     * Creates a lightweight version of pizzas by removing heavy base64 media URLs and legacy fields.
+     * Used for localStorage persistence to avoid QuotaExceededError.
+     */
+    slimPizzas: (pizzas: PizzaData[]): any[] => {
+        return pizzas.map(p => ({
+            ...p,
+            photos: [], // Clear legacy photos array taking up space
+            media: p.media?.map(m => ({
+                ...m,
+                url: "" // Clear heavy base64 data for localStorage (stored in IndexedDB)
+            }))
+        }));
     },
 
     /**

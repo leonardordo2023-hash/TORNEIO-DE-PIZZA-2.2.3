@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { PizzaData, getSum, SocialData, MediaItem, UserAccount } from '../types';
-import { Award, Info, Pizza, Heart, MessageCircle, Trash2, User, X, Pencil, Check, Image as ImageIcon, Video, Smile, Loader2, Send, MoreHorizontal, CornerDownRight, BarChart2, ShieldCheck, Megaphone, Newspaper, Trophy, Plus, ListFilter } from 'lucide-react';
+import { PizzaData, SocialData, MediaItem, UserAccount, Comment, PollData } from '../types';
+import { Info, Heart, MessageCircle, Trash2, X, Check, Image as ImageIcon, Loader2, Send, ShieldCheck, Megaphone, Newspaper, Plus, ListFilter, Camera, Clock, PlusCircle, MinusCircle, Sparkles, Pencil } from 'lucide-react';
 import { processMediaFile } from '../services/imageService';
 import { Language, translations } from '../services/translations';
 
@@ -17,13 +17,14 @@ interface NewsFeedProps {
   onReact: (mediaId: string, emoji: string) => void;
   onCommentReact: (mediaId: string, commentId: string, emoji: string) => void;
   onReplyToComment: (mediaId: string, commentId: string, text: string) => void;
-  // Fix: Removed duplicate identifier 'onReplyReact'
   onReplyReact: (mediaId: string, commentId: string, replyId: string, emoji: string) => void;
+  onReplyToCommentAction?: (mediaId: string, commentId: string, text: string) => void;
   onUpdateCaption: (id: number | string, mediaId: string, caption: string) => void;
   language: Language;
   currentUser: UserAccount;
   onPollVote: (pizzaId: number | string, mediaId: string, selectedOptions: string[]) => void;
   mode?: 'news' | 'avisos';
+  uiScale?: number;
 }
 
 const getRelativeTime = (timestamp: number | undefined) => {
@@ -36,68 +37,56 @@ const getRelativeTime = (timestamp: number | undefined) => {
   return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 };
 
-const ITEMS_PER_PAGE = 5;
-const THREE_MONTHS_MS = 3 * 30 * 24 * 60 * 60 * 1000;
-
 export const NewsFeed: React.FC<NewsFeedProps> = ({ 
     pizzas, userId, onAddPhoto, onDeletePhoto,
-    socialData, onAddComment, onEditComment, onDeleteComment, onReact, onCommentReact, onUpdateCaption, language, currentUser, onReplyToComment, onReplyReact, onPollVote,
-    mode = 'news'
+    socialData, onAddComment, onEditComment, onDeleteComment, onReact, onCommentReact, language, currentUser, onPollVote, onUpdateCaption,
+    mode = 'news', uiScale = 1
 }) => {
   const t = translations[language];
   const isAdmin = userId.toLowerCase() === '@leonardo';
+  const isMaxScale = uiScale >= 1.3;
+
+  const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
+  const [commentInput, setCommentInput] = useState<Record<string, string>>({});
+  
+  // Edit States
+  const [editingPostId, setEditingPostId] = useState<string | null>(null);
+  const [editPostCaption, setEditPostCaption] = useState('');
+  const [editingCommentId, setEditingCommentId] = useState<{mediaId: string, commentId: string} | null>(null);
+  const [editCommentText, setEditCommentText] = useState('');
+
+  // Modal State
+  const [isPostModalOpen, setIsPostModalOpen] = useState(false);
+  const [postType, setPostType] = useState<'news' | 'poll'>('news');
+  const [postCaption, setPostCaption] = useState('');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [pollOptions, setPollOptions] = useState<string[]>(['', '']);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   const feedItems = useMemo(() => {
       return pizzas.flatMap(p => (p.media || [])
         .filter(item => !item.hiddenFromFeed)
         .filter(item => {
-            const isExpired = (Date.now() - (item.date || 0)) > THREE_MONTHS_MS;
-            if (isExpired) return false;
             if (mode === 'news') return item.type !== 'poll';
-            if (mode === 'avisos') return item.type === 'poll' || item.type === 'news' || item.type === 'video' || item.type === 'image';
+            if (mode === 'avisos') return item.type === 'poll';
             return true;
         })
         .map(item => ({ pizzaId: p.id, item: item }))
       ).sort((a, b) => (b.item.date || 0) - (a.item.date || 0));
   }, [pizzas, mode]);
 
-  const leader = useMemo(() => {
-    const evaluated = pizzas.filter(p => (getSum(p.beautyScores) + getSum(p.tasteScores)) > 0);
-    return [...evaluated].sort((a, b) => (getSum(b.beautyScores) + getSum(b.tasteScores)) - (getSum(a.beautyScores) + getSum(a.tasteScores)))[0];
-  }, [pizzas]);
+  const handleAddPollOption = () => {
+      if (pollOptions.length < 5) setPollOptions([...pollOptions, '']);
+  };
 
-  const [displayCount, setDisplayCount] = useState(ITEMS_PER_PAGE);
-  const visibleFeedItems = feedItems.slice(0, displayCount);
-  const loaderRef = useRef<HTMLDivElement>(null);
-
-  const [isPostModalOpen, setIsPostModalOpen] = useState(false);
-  const [isPollMode, setIsPollMode] = useState(false);
-  const [postCaption, setPostCaption] = useState('');
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
-  
-  const [pollQuestion, setPollQuestion] = useState('');
-  const [pollOptions, setPollOptions] = useState(['', '']);
-  const [pollAllowMultiple, setPollAllowMultiple] = useState(false);
-
-  useEffect(() => {
-      const observer = new IntersectionObserver((entries) => {
-          if (entries[0].isIntersecting && displayCount < feedItems.length) {
-              setDisplayCount(prev => prev + ITEMS_PER_PAGE);
-          }
-      }, { rootMargin: '100px' });
-      if (loaderRef.current) observer.observe(loaderRef.current);
-      return () => observer.disconnect();
-  }, [feedItems.length, displayCount]);
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      setPreviewUrl(URL.createObjectURL(file));
-      setSelectedFile(file);
-      setIsPostModalOpen(true);
-      setIsPollMode(false);
+  const handleRemovePollOption = (index: number) => {
+      if (pollOptions.length > 2) {
+          const newOpts = [...pollOptions];
+          newOpts.splice(index, 1);
+          setPollOptions(newOpts);
+      }
   };
 
   const handlePostSubmit = async () => {
@@ -105,262 +94,359 @@ export const NewsFeed: React.FC<NewsFeedProps> = ({
       if (!targetId) return;
       setIsUploading(true);
       try {
-          if (isPollMode) {
-              if (!pollQuestion.trim() || pollOptions.filter(o => o.trim()).length < 2) {
-                  alert("Preencha a pergunta e pelo menos 2 opções.");
-                  setIsUploading(false);
-                  return;
-              }
-              onAddPhoto(targetId, {
-                  id: Math.random().toString(36).substring(2, 15),
-                  url: '',
-                  type: 'poll',
-                  category: 'pizza',
-                  date: Date.now(),
-                  caption: pollQuestion,
-                  poll: {
-                      question: pollQuestion,
-                      options: pollOptions.filter(o => o.trim()).map(text => ({ id: Math.random().toString(36).substring(2, 9), text })),
-                      votes: {},
-                      allowMultiple: pollAllowMultiple
-                  }
-              });
-          } else {
-              if (!selectedFile && !postCaption.trim()) return;
-              let url = '';
-              let type: any = 'image';
-              if (selectedFile) {
-                  const processed = await processMediaFile(selectedFile, 100);
-                  url = processed.url;
-                  type = processed.type;
-              }
-              onAddPhoto(targetId, {
-                  id: Math.random().toString(36).substring(2, 15),
-                  url,
-                  type,
-                  category: 'pizza',
-                  date: Date.now(),
-                  caption: postCaption
-              });
+          let url = '';
+          if (postType === 'news' && selectedFile) {
+              const res = await processMediaFile(selectedFile, 50, setUploadProgress);
+              url = res.url;
           }
-          closePostModal();
-      } catch (err) { alert("Erro ao publicar."); } finally { setIsUploading(true); setIsUploading(false); }
+
+          const mediaItem: MediaItem = {
+              id: Math.random().toString(36).substring(2, 15),
+              url,
+              type: postType as any,
+              category: 'pizza',
+              date: Date.now(),
+              caption: postCaption
+          };
+
+          if (postType === 'poll') {
+              mediaItem.poll = {
+                  question: postCaption,
+                  options: pollOptions.filter(o => o.trim() !== '').map((o, idx) => ({ id: `opt-${idx}`, text: o })),
+                  votes: {},
+                  allowMultiple: false
+              };
+          }
+
+          onAddPhoto(targetId, mediaItem);
+          resetModal();
+      } catch (err) { alert("Erro ao postar."); } finally { setIsUploading(false); }
   };
 
-  const closePostModal = () => {
+  const resetModal = () => {
       setIsPostModalOpen(false);
       setPostCaption('');
       setSelectedFile(null);
       setPreviewUrl(null);
-      setIsPollMode(false);
-      setPollQuestion('');
       setPollOptions(['', '']);
+      setPostType('news');
   };
 
-  const renderPoll = (pizzaId: number | string, item: MediaItem) => {
+  const handleDeleteItem = (pizzaId: string | number, mediaId: string) => {
+      if (confirm("Deseja apagar esta publicação do Feed?")) {
+          onDeletePhoto(pizzaId, mediaId);
+      }
+  };
+
+  const handleStartEditPost = (item: MediaItem) => {
+      setEditingPostId(item.id);
+      setEditPostCaption(item.caption || '');
+  };
+
+  const handleSaveEditPost = (pizzaId: string | number, mediaId: string) => {
+      onUpdateCaption(pizzaId, mediaId, editPostCaption);
+      setEditingPostId(null);
+  };
+
+  const handleStartEditComment = (mediaId: string, comment: Comment) => {
+      setEditingCommentId({ mediaId, commentId: comment.id });
+      setEditCommentText(comment.text);
+  };
+
+  const handleSaveEditComment = () => {
+      if (!editingCommentId) return;
+      onEditComment(editingCommentId.mediaId, editingCommentId.commentId, editCommentText);
+      setEditingCommentId(null);
+  };
+
+  const renderPoll = (pizzaId: string | number, item: MediaItem) => {
       if (!item.poll) return null;
-      const totalVotes = Object.values(item.poll.votes).length;
-      const myVotes = item.poll.votes[currentUser.nickname] || [];
+      const poll = item.poll;
+      const allVotes = Object.values(poll.votes).flat();
+      const totalVotes = allVotes.length;
+      const userVotes = poll.votes[currentUser.nickname] || [];
 
       return (
-          <div className="space-y-3 mt-2">
-              {item.poll.options.map(opt => {
-                  const optionVotes = Object.values(item.poll!.votes).filter(v => v.includes(opt.id)).length;
-                  const percent = totalVotes > 0 ? (optionVotes / totalVotes) * 100 : 0;
-                  const isSelected = myVotes.includes(opt.id);
+          <div className="space-y-2 mt-4">
+              {poll.options.map((opt) => {
+                  const optVotes = allVotes.filter(v => v === opt.id).length;
+                  const percentage = totalVotes > 0 ? (optVotes / totalVotes) * 100 : 0;
+                  const isSelected = userVotes.includes(opt.id);
 
                   return (
                       <button 
                         key={opt.id}
-                        onClick={() => onPollVote(pizzaId, item.id, isSelected ? myVotes.filter(id => id !== opt.id) : (item.poll!.allowMultiple ? [...myVotes, opt.id] : [opt.id]))}
-                        className={`w-full relative h-12 rounded-xl border-2 transition-all overflow-hidden group ${isSelected ? 'border-orange-500 bg-orange-50 dark:bg-orange-900/20' : 'border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800'}`}
+                        onClick={() => onPollVote(pizzaId, item.id, [opt.id])}
+                        className={`w-full relative h-10 rounded-xl overflow-hidden border-0 transition-all duration-500 ${isSelected ? 'bg-indigo-50/20' : 'bg-slate-100 dark:bg-slate-800'}`}
                       >
-                          <div className={`absolute top-0 left-0 h-full transition-all duration-1000 ${isSelected ? 'bg-orange-200/50 dark:bg-orange-500/20' : 'bg-slate-100 dark:bg-slate-700/50'}`} style={{ width: `${percent}%` }}></div>
-                          <div className="relative z-10 px-4 h-full flex items-center justify-between font-bold text-sm">
-                              <span className="flex items-center gap-2">
-                                  {isSelected && <Check size={16} className="text-orange-600" />}
-                                  {opt.text}
-                              </span>
-                              <span className="text-xs opacity-60">{percent.toFixed(0)}%</span>
+                          <div 
+                            className={`absolute inset-0 transition-all duration-1000 ease-out ${isSelected ? 'bg-indigo-500/30' : 'bg-slate-200 dark:bg-slate-700'}`}
+                            style={{ width: `${percentage}%`, opacity: 0.4 }}
+                          />
+                          <div className="absolute inset-0 px-4 flex items-center justify-between">
+                              <span className={`text-[10px] font-black uppercase tracking-tight ${isSelected ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-700 dark:text-slate-300'}`}>{opt.text}</span>
+                              <span className="text-[9px] font-mono font-black opacity-50">{percentage.toFixed(0)}%</span>
                           </div>
                       </button>
                   );
               })}
-              <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest text-center mt-2">
-                  {totalVotes} Votos computados • {item.poll.allowMultiple ? 'Múltipla escolha' : 'Escolha única'}
-              </p>
+              <p className="text-[8px] font-black text-slate-400 uppercase text-center tracking-widest mt-1">{totalVotes} votos registrados</p>
           </div>
       );
   };
 
   return (
-    <div className="max-w-xl mx-auto space-y-6 pb-20 animate-in fade-in duration-500">
-      
-      <div className="flex items-center justify-between px-1">
-        <div className="flex items-center gap-3">
-            <div className={`p-2.5 rounded-2xl ${mode === 'news' ? 'bg-blue-600 text-white shadow-blue-500/20' : 'bg-orange-500 text-white shadow-orange-500/20'} shadow-lg`}>
-                {mode === 'news' ? <Newspaper size={24} /> : <Megaphone size={24} className="animate-wiggle" />}
+    <div className="max-w-md mx-auto space-y-4 pb-24 animate-fade-in-up">
+      <div className="flex items-center justify-between px-2 pt-2">
+        <div className="flex items-center gap-2">
+            <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shadow-lg ${mode === 'news' ? 'bg-indigo-600' : 'bg-orange-500'} text-white rotate-2`}>
+                {mode === 'news' ? <Newspaper size={20} /> : <Megaphone size={20} />}
             </div>
-            <div>
-                <h2 className="text-2xl font-black uppercase tracking-tighter text-slate-800 dark:text-white leading-none">
-                    {mode === 'news' ? t.news : t.avisos}
-                </h2>
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Atualizado em tempo real</span>
-            </div>
+            <h2 className="text-2xl font-black uppercase tracking-tighter text-slate-800 dark:text-white leading-none">{mode === 'news' ? 'Feed Social' : 'Avisos News'}</h2>
         </div>
+        {isAdmin && (
+          <button onClick={() => setIsPostModalOpen(true)} className="w-10 h-10 bg-indigo-600 text-white rounded-2xl flex items-center justify-center shadow-xl active:scale-90 transition-all">
+            <Plus size={20} strokeWidth={3} />
+          </button>
+        )}
       </div>
-
-      {isAdmin && (
-          <div className="bg-white dark:bg-slate-800 rounded-3xl p-4 border-2 border-slate-100 dark:border-slate-700 shadow-sm">
-              <div className="flex gap-3 mb-4">
-                  <div className="w-10 h-10 rounded-full bg-slate-900 flex items-center justify-center shrink-0 border-2 border-white dark:border-slate-700 shadow-md">
-                      <ShieldCheck size={20} className="text-blue-400" />
-                  </div>
-                  <button onClick={() => { setIsPollMode(false); setIsPostModalOpen(true); }} className="flex-1 bg-slate-50 dark:bg-slate-900 rounded-2xl px-5 text-left text-slate-400 font-bold text-sm hover:bg-slate-100 transition-colors">
-                      {mode === 'news' ? 'O que os jurados precisam saber?' : 'Publique um aviso importante...'}
-                  </button>
-              </div>
-              <div className="flex gap-2 border-t border-slate-50 dark:border-slate-700 pt-3">
-                  <button onClick={() => { setIsPollMode(false); setIsPostModalOpen(true); }} className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl hover:bg-blue-50 dark:hover:bg-blue-900/20 text-blue-600 font-black text-xs uppercase tracking-widest transition-all">
-                      <ImageIcon size={16} /> Foto/Vídeo
-                  </button>
-                  <div className="w-px h-6 bg-slate-100 dark:bg-slate-700 my-auto"></div>
-                  <button onClick={() => { setIsPollMode(true); setIsPostModalOpen(true); }} className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl hover:bg-orange-50 dark:hover:bg-orange-900/20 text-orange-600 font-black text-xs uppercase tracking-widest transition-all">
-                      <ListFilter size={16} /> Criar Enquete
-                  </button>
-              </div>
-          </div>
-      )}
-
-      {mode === 'news' && leader && (
-          <div className="bg-gradient-to-br from-indigo-600 to-blue-700 rounded-[2rem] p-6 text-white shadow-xl relative overflow-hidden">
-              <div className="absolute top-0 right-0 p-8 opacity-10"><Pizza size={120} /></div>
-              <div className="relative z-10 flex items-center justify-between">
-                  <div>
-                      <span className="bg-white/20 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest mb-3 inline-block">Competição Ativa</span>
-                      <h3 className="text-3xl font-black leading-tight">Pizza #{leader.id}</h3>
-                      <p className="text-blue-100 font-bold">Chef {pizzas.find(p => p.id === leader.id)?.notes || 'Mestre'}</p>
-                  </div>
-                  <div className="text-right">
-                      <div className="text-4xl font-black">{(getSum(leader.beautyScores) + getSum(leader.tasteScores)).toFixed(1)}</div>
-                      <span className="text-[10px] font-black uppercase tracking-widest opacity-60">Pontos Totais</span>
-                  </div>
-              </div>
-          </div>
-      )}
 
       <div className="space-y-6">
           {feedItems.length === 0 ? (
-              <div className="py-20 text-center flex flex-col items-center gap-4 bg-slate-50 dark:bg-slate-900 rounded-[3rem] border-2 border-dashed border-slate-200 dark:border-slate-800">
-                  <Info size={48} className="text-slate-300" />
-                  <p className="text-slate-400 font-bold uppercase text-xs tracking-widest">Nenhuma publicação recente</p>
+              <div className="py-20 text-center flex flex-col items-center gap-4 bg-white/60 dark:bg-slate-900/40 rounded-[3rem] border-0">
+                  <Sparkles size={40} className="text-slate-300 animate-pulse" />
+                  <p className="text-slate-400 font-black uppercase text-[10px] tracking-widest">Nada postado ainda</p>
               </div>
           ) : (
-              visibleFeedItems.map(({ pizzaId, item }) => (
-                  <div key={item.id} className="bg-white dark:bg-slate-800 rounded-[2.5rem] border border-slate-100 dark:border-slate-700 shadow-sm overflow-hidden group animate-in slide-in-from-bottom-4 duration-500">
-                      <div className="p-4 flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                              <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 ${item.type === 'poll' ? 'bg-orange-100 border-orange-200 text-orange-600' : 'bg-blue-600 border-white text-white shadow-md'}`}>
-                                  {item.type === 'poll' ? <ListFilter size={20} /> : <ShieldCheck size={20} />}
-                              </div>
-                              <div>
-                                  <span className="block font-black text-slate-800 dark:text-slate-100 text-sm leading-none">
-                                      {item.type === 'poll' ? 'Enquete Oficial' : 'Administrador'}
-                                  </span>
-                                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter mt-1 block">{getRelativeTime(item.date)}</span>
-                              </div>
-                          </div>
-                          {isAdmin && (
-                              <button onClick={() => window.confirm("Excluir postagem?") && onDeletePhoto(pizzaId, item.id)} className="p-2 text-slate-300 hover:text-red-500 transition-colors">
-                                  <Trash2 size={18} />
+              feedItems.map(({ pizzaId, item }) => (
+                  <div key={item.id} className="bg-white dark:bg-slate-900 rounded-[2.5rem] border-0 shadow-lg shadow-slate-200/50 dark:shadow-none overflow-hidden transition-all group relative">
+                      
+                      {isAdmin && (
+                          <div className="absolute top-4 right-4 flex gap-2 z-20">
+                              <button 
+                                onClick={() => handleStartEditPost(item)}
+                                className="p-2.5 bg-indigo-50 text-indigo-500 rounded-xl opacity-0 group-hover:opacity-100 transition-all hover:bg-indigo-500 hover:text-white shadow-md"
+                              >
+                                  <Pencil size={16} />
                               </button>
-                          )}
-                      </div>
+                              <button 
+                                onClick={() => handleDeleteItem(pizzaId, item.id)}
+                                className="p-2.5 bg-red-50 text-red-500 rounded-xl opacity-0 group-hover:opacity-100 transition-all hover:bg-red-500 hover:text-white shadow-md"
+                              >
+                                  <Trash2 size={16} />
+                              </button>
+                          </div>
+                      )}
 
-                      <div className="px-6 pb-6">
-                          {item.caption && <p className={`text-slate-800 dark:text-slate-200 font-bold mb-4 ${item.type === 'poll' ? 'text-lg tracking-tight' : 'text-sm leading-relaxed'}`}>{item.caption}</p>}
-                          
-                          {item.url && (
-                              <div className="rounded-3xl overflow-hidden bg-slate-100 dark:bg-slate-900 border border-slate-100 dark:border-slate-700 mb-4 shadow-inner">
-                                  {item.type === 'video' ? <video src={item.url} controls className="w-full max-h-[400px] object-cover" /> : <img src={item.url} className="w-full max-h-[400px] object-cover" />}
-                              </div>
-                          )}
-
-                          {item.type === 'poll' && renderPoll(pizzaId, item)}
-                      </div>
-
-                      <div className="px-6 py-4 bg-slate-50/50 dark:bg-slate-900/50 border-t border-slate-50 dark:border-slate-700 flex items-center justify-between">
-                          <button onClick={() => onReact(item.id, '❤️')} className={`flex items-center gap-2 px-4 py-2 rounded-full transition-all ${socialData.likes[item.id]?.[currentUser.nickname] ? 'bg-red-50 text-red-500 shadow-sm' : 'text-slate-400 hover:bg-slate-100'}`}>
-                              <Heart size={18} className={socialData.likes[item.id]?.[currentUser.nickname] ? 'fill-current' : ''} />
-                              <span className="text-xs font-black">{Object.keys(socialData.likes[item.id] || {}).length}</span>
-                          </button>
-                          <div className="flex items-center gap-2 text-slate-400">
-                              <MessageCircle size={18} />
-                              <span className="text-xs font-black">{socialData.comments[item.id]?.length || 0}</span>
+                      <div className="p-4 flex items-center gap-3">
+                          <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${item.type === 'poll' ? 'bg-orange-100 text-orange-600' : 'bg-indigo-100 text-indigo-600'}`}>
+                              {item.type === 'poll' ? <ListFilter size={18} /> : <ShieldCheck size={18} />}
+                          </div>
+                          <div>
+                              <span className="block font-black text-slate-800 dark:text-white text-[13px] uppercase tracking-tighter">{item.type === 'poll' ? 'Votação Aberta' : 'Leonardo Admin'}</span>
+                              <span className="text-[8px] font-black text-slate-400 uppercase flex items-center gap-1"><Clock size={8}/> {getRelativeTime(item.date)}</span>
                           </div>
                       </div>
+
+                      <div className="px-5 pb-5">
+                          {editingPostId === item.id ? (
+                              <div className="mb-4 space-y-2">
+                                  <textarea 
+                                    className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl text-[13px] font-bold outline-none border-2 border-indigo-500"
+                                    value={editPostCaption}
+                                    onChange={(e) => setEditPostCaption(e.target.value)}
+                                    rows={3}
+                                  />
+                                  <div className="flex gap-2">
+                                      <button onClick={() => setEditingPostId(null)} className="flex-1 py-2 bg-slate-100 rounded-lg font-black text-[9px] uppercase">Cancelar</button>
+                                      <button onClick={() => handleSaveEditPost(pizzaId, item.id)} className="flex-1 py-2 bg-indigo-600 text-white rounded-lg font-black text-[9px] uppercase">Salvar</button>
+                                  </div>
+                              </div>
+                          ) : (
+                              item.caption && <p className="text-slate-800 dark:text-slate-100 font-bold mb-4 text-[15px] leading-tight tracking-tight whitespace-pre-wrap">{item.caption}</p>
+                          )}
+                          
+                          {item.type === 'poll' ? renderPoll(pizzaId, item) : (
+                              item.url && (
+                                  <div className="rounded-[2rem] overflow-hidden bg-white shadow-inner border-0">
+                                      <img src={item.url} className={`w-full object-cover transition-transform duration-700 hover:scale-105 ${isMaxScale ? '' : 'max-h-[350px]'}`} loading="lazy" />
+                                  </div>
+                              )
+                          )}
+                      </div>
+
+                      <div className="px-6 py-3 bg-slate-50 dark:bg-slate-800/60 border-t border-transparent flex items-center justify-between">
+                        <div className="flex gap-4">
+                            <button onClick={() => onReact(item.id, '❤️')} className={`flex items-center gap-1.5 transition-all active:scale-125 ${socialData.likes[item.id]?.[currentUser.nickname] ? 'text-red-500' : 'text-slate-400'}`}>
+                                <Heart size={20} className={socialData.likes[item.id]?.[currentUser.nickname] ? 'fill-current' : ''} />
+                                <span className="text-[11px] font-black">{Object.keys(socialData.likes[item.id] || {}).length}</span>
+                            </button>
+                            <button onClick={() => setExpandedComments(prev => ({...prev, [item.id]: !prev[item.id]}))} className={`flex items-center gap-1.5 text-slate-400 transition-all hover:text-indigo-500`}>
+                                <MessageCircle size={20} />
+                                <span className="text-[11px] font-black">{socialData.comments[item.id]?.length || 0}</span>
+                            </button>
+                        </div>
+                      </div>
+
+                      {(expandedComments[item.id] || isMaxScale) && (
+                        <div className="bg-white dark:bg-slate-900 p-5 border-t border-transparent animate-in slide-in-from-top-2">
+                             <div className={`space-y-4 mb-4 overflow-y-auto custom-scrollbar pr-2 ${isMaxScale ? '' : 'max-h-60'}`}>
+                                {socialData.comments[item.id]?.length === 0 ? (
+                                    <p className="text-[9px] text-slate-400 uppercase font-black text-center py-4">Nenhum comentário ainda</p>
+                                ) : (
+                                    socialData.comments[item.id]?.map(c => {
+                                        const isAuthor = c.user === currentUser.nickname;
+                                        const canModify = isAuthor || isAdmin;
+                                        
+                                        return (
+                                            <div key={c.id} className="group/comment flex flex-col gap-1 bg-slate-50 dark:bg-slate-800/40 p-3 rounded-2xl relative">
+                                                <div className="flex justify-between items-center">
+                                                    <span className="font-black text-[9px] uppercase text-indigo-500">{c.user}</span>
+                                                    {canModify && (
+                                                        <div className="flex gap-2 opacity-0 group-hover/comment:opacity-100 transition-opacity">
+                                                            <button onClick={() => handleStartEditComment(item.id, c)} className="text-slate-400 hover:text-indigo-600"><Pencil size={12}/></button>
+                                                            <button onClick={() => confirm("Apagar comentário?") && onDeleteComment(item.id, c.id)} className="text-slate-400 hover:text-red-600"><Trash2 size={12}/></button>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                {editingCommentId?.commentId === c.id ? (
+                                                    <div className="space-y-1 mt-1">
+                                                        <input 
+                                                            className="w-full bg-white dark:bg-slate-800 p-2 rounded-lg text-[11px] font-bold outline-none border border-indigo-400"
+                                                            value={editCommentText}
+                                                            onChange={(e) => setEditCommentText(e.target.value)}
+                                                            autoFocus
+                                                        />
+                                                        <div className="flex gap-2">
+                                                            <button onClick={() => setEditingCommentId(null)} className="text-[8px] font-black text-slate-400">CANCELAR</button>
+                                                            <button onClick={handleSaveEditComment} className="text-[8px] font-black text-indigo-600">SALVAR</button>
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <p className="font-bold text-[11px] text-slate-700 dark:text-slate-300 leading-tight">{c.text}</p>
+                                                )}
+                                            </div>
+                                        );
+                                    })
+                                )}
+                             </div>
+                             <div className="flex gap-2">
+                                <input className="flex-1 bg-slate-50 dark:bg-slate-800 border-0 rounded-xl px-4 py-3 text-[11px] font-bold outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Comentar..." value={commentInput[item.id] || ''} onChange={e => setCommentInput({...commentInput, [item.id]: e.target.value})} onKeyDown={e => e.key === 'Enter' && (onAddComment(item.id, commentInput[item.id]), setCommentInput({...commentInput, [item.id]: ''}))} />
+                                <button onClick={() => (onAddComment(item.id, commentInput[item.id]), setCommentInput({...commentInput, [item.id]: ''}))} className="p-3 bg-indigo-600 text-white rounded-xl active:scale-95"><Send size={18} /></button>
+                             </div>
+                        </div>
+                      )}
                   </div>
               ))
           )}
-          {displayCount < feedItems.length && <div ref={loaderRef} className="py-10 flex justify-center"><Loader2 className="animate-spin text-slate-300" /></div>}
       </div>
 
       {isPostModalOpen && (
-          <div className="fixed inset-0 z-[600] bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in">
-              <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-[2.5rem] shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in zoom-in-95">
-                  <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
-                      <h3 className="font-black text-slate-800 dark:text-white uppercase tracking-tighter">{isPollMode ? 'Nova Enquete' : 'Nova Postagem'}</h3>
-                      <button onClick={closePostModal} className="p-2 bg-slate-200 dark:bg-slate-700 rounded-full hover:bg-slate-300 transition-colors"><X size={20}/></button>
+          <div className="fixed inset-0 z-[500] bg-white/90 dark:bg-slate-900/90 backdrop-blur-md flex items-center justify-center p-2 animate-in fade-in" onClick={resetModal}>
+              <div 
+                className="bg-white dark:bg-slate-800 w-full max-w-[310px] rounded-[2.2rem] shadow-2xl border-0 overflow-hidden animate-in zoom-in-95 flex flex-col max-h-[88vh] relative"
+                onClick={e => e.stopPropagation()}
+              >
+                  {/* HEADER - LIMPO SEM BORDAS */}
+                  <div className="p-3 border-b border-transparent flex justify-between items-center bg-white dark:bg-slate-800 shrink-0">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 bg-indigo-600 rounded-lg flex items-center justify-center text-white shadow-lg rotate-3">
+                            <Plus size={14} strokeWidth={3} />
+                        </div>
+                        <h3 className="text-sm font-black uppercase tracking-tighter text-slate-800 dark:text-white">Novo Post</h3>
+                      </div>
+                      <button onClick={resetModal} className="p-1 bg-slate-100 dark:bg-slate-700 rounded-lg hover:bg-slate-200 transition-all text-slate-500 dark:text-slate-300"><X size={14}/></button>
                   </div>
 
-                  <div className="p-8 max-h-[70vh] overflow-y-auto custom-scrollbar space-y-6">
-                      {isPollMode ? (
-                          <>
-                              <div className="space-y-2">
-                                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Pergunta da Enquete</label>
-                                  <textarea autoFocus value={pollQuestion} onChange={e => setPollQuestion(e.target.value)} className="w-full p-4 bg-slate-50 dark:bg-slate-800 border-2 border-transparent focus:border-orange-500 rounded-2xl outline-none font-bold text-lg dark:text-white transition-all" rows={2} placeholder="Ex: Qual a melhor pizza de hoje?" />
-                              </div>
-                              <div className="space-y-3">
-                                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Opções de Resposta</label>
-                                  {pollOptions.map((opt, i) => (
-                                      <div key={i} className="flex gap-2">
-                                          <input value={opt} onChange={e => { const n = [...pollOptions]; n[i] = e.target.value; setPollOptions(n); }} className="flex-1 p-3 bg-slate-50 dark:bg-slate-800 border-none rounded-xl font-bold text-sm dark:text-white" placeholder={`Opção ${i + 1}`} />
-                                          {pollOptions.length > 2 && <button onClick={() => setPollOptions(pollOptions.filter((_, idx) => idx !== i))} className="p-3 text-red-500 hover:bg-red-50 rounded-xl transition-colors"><Trash2 size={18}/></button>}
-                                      </div>
-                                  ))}
-                                  <button onClick={() => setPollOptions([...pollOptions, ''])} className="w-full py-3 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl text-slate-400 hover:text-orange-500 hover:border-orange-500 transition-all font-black text-[10px] uppercase flex items-center justify-center gap-2"><Plus size={14}/> Adicionar Opção</button>
-                              </div>
-                              <label className="flex items-center gap-3 p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl cursor-pointer group">
-                                  <input type="checkbox" checked={pollAllowMultiple} onChange={e => setPollAllowMultiple(e.target.checked)} className="w-5 h-5 rounded border-none bg-slate-200 text-orange-500 focus:ring-0 transition-all" />
-                                  <span className="text-xs font-black uppercase tracking-widest text-slate-600 dark:text-slate-400">Permitir múltiplas escolhas</span>
-                              </label>
-                          </>
+                  {/* SELETOR - SUAVE */}
+                  <div className="flex p-0.5 gap-0.5 bg-slate-100 dark:bg-slate-900 mx-3 my-2.5 rounded-lg shrink-0">
+                      <button onClick={() => setPostType('news')} className={`flex-1 py-1 rounded-md text-[8px] font-black uppercase tracking-widest transition-all ${postType === 'news' ? 'bg-white dark:bg-slate-800 shadow-sm text-indigo-600' : 'text-slate-400'}`}>Normal</button>
+                      <button onClick={() => setPostType('poll')} className={`flex-1 py-1 rounded-md text-[8px] font-black uppercase tracking-widest transition-all ${postType === 'poll' ? 'bg-white dark:bg-slate-800 shadow-sm text-indigo-600' : 'text-slate-400'}`}>Enquete</button>
+                  </div>
+
+                  {/* CONTEÚDO - SEM BORDAS */}
+                  <div className="px-4 pb-3 space-y-3 overflow-y-auto custom-scrollbar flex-1 min-h-0">
+                      <div className="space-y-1">
+                        <label className="text-[7px] font-black uppercase text-slate-400 ml-1 tracking-[0.1em]">{postType === 'news' ? 'Legenda' : 'Pergunta'}</label>
+                        <textarea 
+                            value={postCaption} 
+                            onChange={e => setPostCaption(e.target.value)} 
+                            className="w-full p-3 bg-slate-50 dark:bg-slate-900 border-0 rounded-xl outline-none font-bold text-xs h-20 transition-all shadow-inner text-slate-800 dark:text-white resize-none" 
+                            placeholder={postType === 'news' ? "Escreva aqui..." : "Tema da enquete?"} 
+                        />
+                      </div>
+
+                      {postType === 'news' ? (
+                        <div className="space-y-1">
+                            <label className="text-[7px] font-black uppercase text-slate-400 ml-1 tracking-[0.1em]">Mídia</label>
+                            <label className="w-full h-30 border-0 rounded-2xl flex flex-col items-center justify-center gap-1.5 cursor-pointer hover:bg-white dark:hover:bg-slate-800 transition-all overflow-hidden relative group bg-slate-50 dark:bg-slate-900">
+                                <input type="file" className="hidden" accept="image/*" onChange={e => {
+                                    const f = e.target.files?.[0];
+                                    if (f) { setSelectedFile(f); setPreviewUrl(URL.createObjectURL(f)); }
+                                }} />
+                                {previewUrl ? (
+                                    <img src={previewUrl} className="h-full w-full object-cover" />
+                                ) : (
+                                    <>
+                                        <div className="p-2.5 bg-white dark:bg-slate-700 rounded-full shadow-md">
+                                            <Camera size={20} className="text-indigo-500" />
+                                        </div>
+                                        <span className="text-[7px] font-black uppercase text-slate-400 tracking-widest">Anexar Foto</span>
+                                    </>
+                                )}
+                            </label>
+                        </div>
                       ) : (
-                          <>
-                              <textarea autoFocus value={postCaption} onChange={e => setPostCaption(e.target.value)} className="w-full p-4 bg-slate-50 dark:bg-slate-800 border-2 border-transparent focus:border-blue-500 rounded-2xl outline-none font-bold text-lg dark:text-white transition-all" rows={3} placeholder="Escreva algo sobre o torneio..." />
-                              {previewUrl ? (
-                                  <div className="relative rounded-3xl overflow-hidden border-4 border-slate-100 dark:border-slate-800">
-                                      <img src={previewUrl} className="w-full aspect-video object-cover" />
-                                      <button onClick={() => { setPreviewUrl(null); setSelectedFile(null); }} className="absolute top-4 right-4 p-2 bg-black/60 text-white rounded-full"><X size={16}/></button>
-                                  </div>
-                              ) : (
-                                  <label className="w-full py-10 border-4 border-dashed border-slate-100 dark:border-slate-800 rounded-[2.5rem] flex flex-col items-center justify-center gap-3 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-all text-slate-400 hover:text-blue-500">
-                                      <input type="file" className="hidden" accept="image/*,video/*" onChange={handleFileSelect} />
-                                      <div className="p-4 bg-slate-100 dark:bg-slate-800 rounded-full group-hover:scale-110 transition-transform"><Plus size={32}/></div>
-                                      <span className="font-black text-[10px] uppercase tracking-[0.2em]">Adicionar Mídia</span>
-                                  </label>
-                              )}
-                          </>
+                          <div className="space-y-1.5 animate-in slide-in-from-top-4 duration-500">
+                             <label className="text-[7px] font-black uppercase text-slate-400 ml-1 tracking-[0.1em]">Opções</label>
+                             <div className="grid gap-1">
+                                {pollOptions.map((opt, idx) => (
+                                    <div key={idx} className="flex gap-1.5 group animate-in slide-in-from-left duration-300" style={{ animationDelay: `${idx * 80}ms` }}>
+                                        <input 
+                                            className="flex-1 px-3 py-1.5 bg-slate-50 dark:bg-slate-900 border-0 rounded-lg text-[10px] font-bold outline-none focus:ring-1 focus:ring-indigo-500 transition-all text-slate-800 dark:text-white" 
+                                            placeholder={`Opção ${idx + 1}`}
+                                            value={opt}
+                                            onChange={e => {
+                                                const newOpts = [...pollOptions];
+                                                newOpts[idx] = e.target.value;
+                                                setPollOptions(newOpts);
+                                            }}
+                                        />
+                                        {pollOptions.length > 2 && (
+                                            <button onClick={() => handleRemovePollOption(idx)} className="p-1 text-red-400 hover:text-red-600 transition-all"><MinusCircle size={16}/></button>
+                                        )}
+                                    </div>
+                                ))}
+                             </div>
+                             {pollOptions.length < 5 && (
+                                 <button onClick={handleAddPollOption} className="w-full py-2 border-0 rounded-lg flex items-center justify-center gap-1.5 text-indigo-400 bg-indigo-50 dark:bg-slate-700 transition-all">
+                                     <PlusCircle size={12} />
+                                     <span className="text-[7px] font-black uppercase tracking-widest">Nova Opção</span>
+                                 </button>
+                             )}
+                          </div>
                       )}
                   </div>
-
-                  <div className="p-6 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-800">
+                  
+                  {/* FOOTER - LIMPO */}
+                  <div className="p-3 bg-white dark:bg-slate-800 border-t border-transparent shrink-0">
+                      {isUploading && (
+                        <div className="mb-2 space-y-1">
+                            <div className="flex justify-between text-[7px] font-black uppercase text-indigo-500">
+                                <span className="flex items-center gap-1"><Loader2 size={6} className="animate-spin" /> Postando...</span>
+                                <span>{uploadProgress}%</span>
+                            </div>
+                            <div className="w-full h-0.5 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+                                <div className="h-full bg-indigo-600 transition-all" style={{ width: `${uploadProgress}%` }} />
+                            </div>
+                        </div>
+                      )}
                       <button 
-                        onClick={handlePostSubmit}
-                        disabled={isUploading}
-                        className={`w-full py-4 rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl flex items-center justify-center gap-2 transition-all active:scale-95 ${isPollMode ? 'bg-orange-500 hover:bg-orange-600' : 'bg-slate-900 dark:bg-blue-600 hover:bg-black'} text-white`}
+                        onClick={handlePostSubmit} 
+                        disabled={isUploading || !postCaption || (postType === 'poll' && pollOptions.filter(o => o.trim() !== '').length < 2)} 
+                        className="w-full py-3 bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 text-white rounded-2xl font-black text-[9px] uppercase tracking-[0.1em] shadow-lg active:scale-[0.98] disabled:opacity-30 transition-all flex items-center justify-center gap-1.5"
                       >
-                          {isUploading ? <Loader2 className="animate-spin" size={20} /> : <><Send size={18}/> Publicar no Feed</>}
+                          {isUploading ? <Loader2 className="animate-spin" size={14}/> : <><Send size={14}/> {postType === 'news' ? 'Publicar' : 'Lançar'}</>}
                       </button>
                   </div>
               </div>

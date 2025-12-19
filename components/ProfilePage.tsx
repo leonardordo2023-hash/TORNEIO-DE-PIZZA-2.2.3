@@ -5,7 +5,7 @@ import { processMediaFile } from '../services/imageService';
 import { authService } from '../services/authService';
 import { calculateUserLevel } from '../services/gamificationUtils';
 import { translations, Language } from '../services/translations';
-import { Camera, User, Zap, Star, Crown, Save, Loader2, ArrowLeft, ShieldCheck, Heart, ChevronUp, Trash2, X, Search, Check, RefreshCcw, MessageCircle, Image as ImageIcon, HelpCircle } from 'lucide-react';
+import { Camera, User, Zap, Star, Crown, Save, Loader2, ArrowLeft, ShieldCheck, Heart, Trash2, X, Search, Check, RefreshCcw, MessageCircle, Image as ImageIcon, HelpCircle } from 'lucide-react';
 import { broadcastResetUserXP, broadcastUserUpdate } from '../services/p2pService';
 import { GamificationSimulation } from './GamificationSimulation';
 
@@ -61,25 +61,6 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
         return "APRENDIZ";
     };
 
-    const renderLevelArrows = (lvl: number) => {
-        if (lvl >= 5) return <div className="mt-2 flex flex-col items-center animate-bounce-slow"><Crown size={20} className="text-yellow-500 fill-yellow-500 drop-shadow-md" /></div>;
-        const arrowCount = lvl || 1;
-        const arrows = Array.from({ length: arrowCount });
-        return (
-            <div className="mt-2 flex justify-center gap-0.5">
-                {arrows.map((_, i) => (
-                    <ChevronUp 
-                        key={i} 
-                        size={20} 
-                        className="text-slate-700 dark:text-slate-400 drop-shadow-sm animate-pulse" 
-                        style={{ animationDelay: `${i * 150}ms` }}
-                        strokeWidth={4} 
-                    />
-                ))}
-            </div>
-        );
-    };
-
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, field: 'avatar' | 'cover') => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -101,7 +82,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
     const handleSaveProfile = async () => {
         setError('');
         setSuccess('');
-        if (!formData.nickname.startsWith('@')) { setError(t.auth.mustStartWithAt); return; }
+        if (!formData.nickname.startsWith('@')) { setError(t.auth.mustStartWithAt || "Deve começar com @"); return; }
         setIsLoading(true);
         try {
             const updatedUser = await authService.updateUser(currentUser.nickname, {
@@ -116,33 +97,63 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
         } catch (err) { setError((err as Error).message); } finally { setIsLoading(false); }
     };
 
-    // HARD RESET: Define o offset como o total acumulado para voltar ao zero absoluto
-    const applyLevelResetHard = (user: UserAccount) => {
-        const cleanNick = user.nickname.replace('@', '').trim();
-        // Recalculamos o XP sem offset para saber o valor total a anular
-        const userStats = calculateUserLevel({ ...user }, pizzas, socialData, pizzaOwners);
-        // O rawProgress contém todo o XP ganho até agora sem considerar o offset atual
-        localStorage.setItem(`pizza_xp_offset_${cleanNick}`, userStats.rawProgress.toString());
-    };
-
-    const handleResetUserXP = (user: UserAccount) => {
-        if (confirm(`ZERAR XP: Deseja realmente resetar ${user.nickname} para o Nível 1 com 0% de XP?`)) {
-            broadcastResetUserXP({ targetNickname: user.nickname, resetTime: Date.now() });
-            applyLevelResetHard(user);
-            alert(`Perfil de ${user.nickname} zerado com sucesso!`);
-            setShowResetList(false);
-            if (currentUser.nickname === user.nickname) window.location.reload();
+    const handleResetUserXP = async (user: UserAccount) => {
+        if (confirm(`ZERAR EXPERIÊNCIA: Deseja realmente resetar ${user.nickname} para o Nível 1 com 0 pontos?`)) {
+            setIsLoading(true);
+            try {
+                // Calcula os valores brutos acumulados atualmente (desconsiderando offsets antigos)
+                // Para zerar, o novo offset deve ser igual ao valor bruto total
+                const userStats = calculateUserLevel(user, pizzas, socialData, pizzaOwners);
+                
+                // Define os offsets para que a subtração resulte em 0
+                const updated = await authService.updateUser(user.nickname, { 
+                    xpOffset: userStats.rawProgress, 
+                    pointsOffset: userStats.totalDisplayPointsRaw 
+                });
+                
+                // Broadcast P2P para forçar reload e sincronia nos outros clientes
+                broadcastResetUserXP({ targetNickname: user.nickname, resetTime: Date.now() });
+                broadcastUserUpdate(updated);
+                
+                if (currentUser.nickname === user.nickname) {
+                    window.location.reload();
+                } else {
+                    alert(`Experiência de ${user.nickname} zerada com sucesso!`);
+                    setShowResetList(false);
+                }
+            } catch (err) {
+                alert("Erro ao zerar experiência. Verifique sua conexão.");
+            } finally {
+                setIsLoading(false);
+            }
         }
     };
 
-    const handleResetAllXP = () => {
-        if (confirm("ATENÇÃO ADMIN: Esta ação resetará TODOS OS JOGADORES para o Nível 1 com 0% de XP. Deseja prosseguir?")) {
-            const allPlayers = authService.getUsers();
-            broadcastResetUserXP({ targetNickname: 'ALL', resetTime: Date.now() });
-            allPlayers.forEach(user => applyLevelResetHard(user));
-            alert("Todos os perfis foram zerados!");
-            setShowResetList(false);
-            window.location.reload();
+    const handleResetAllXP = async () => {
+        if (confirm("ATENÇÃO ADMIN: Esta ação resetará TODOS OS JOGADORES para o Nível 1 com 0 pontos. Deseja prosseguir?")) {
+            setIsLoading(true);
+            try {
+                const allPlayers = authService.getUsers().filter(u => u.nickname !== '@Leonardo');
+                
+                await Promise.all(allPlayers.map(async (player) => {
+                    const stats = calculateUserLevel(player, pizzas, socialData, pizzaOwners);
+                    const updated = await authService.updateUser(player.nickname, { 
+                        xpOffset: stats.rawProgress,
+                        pointsOffset: stats.totalDisplayPointsRaw 
+                    });
+                    broadcastUserUpdate(updated);
+                }));
+
+                broadcastResetUserXP({ targetNickname: 'ALL', resetTime: Date.now() });
+                alert("Todos os perfis foram zerados com sucesso!");
+                setShowResetList(false);
+                window.location.reload();
+            } catch (err) {
+                console.error(err);
+                alert("Erro ao zerar experiência global.");
+            } finally {
+                setIsLoading(false);
+            }
         }
     };
 
@@ -170,11 +181,12 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                         <div className="p-4 bg-red-50 dark:bg-red-900/10 border-b border-red-100 dark:border-red-900/20">
                             <button 
                                 onClick={handleResetAllXP}
+                                disabled={isLoading}
                                 className="w-full bg-red-600 hover:bg-red-700 text-white font-black py-3 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-red-500/20 transition-all active:scale-95 text-xs uppercase tracking-widest"
                             >
-                                <RefreshCcw size={16} /> Zerar XP de Todos
+                                {isLoading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCcw size={16} />} Zerar Experiência de Todos
                             </button>
-                            <p className="text-[9px] text-red-500 dark:text-red-400 font-bold mt-2 text-center uppercase tracking-tighter">Todos voltarão ao Nível 1 com 0%</p>
+                            <p className="text-[9px] text-red-500 dark:text-red-400 font-bold mt-2 text-center uppercase tracking-tighter">Zerar Pontos e Nível de Todos</p>
                         </div>
 
                         <div className="p-3 border-b border-slate-100 dark:border-slate-800">
@@ -188,7 +200,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                                 <button key={user.nickname} onClick={() => handleResetUserXP(user)} className="w-full flex items-center gap-3 p-3 hover:bg-indigo-50 dark:hover:bg-slate-800 rounded-2xl transition-colors text-left group border border-transparent hover:border-indigo-100 dark:hover:border-slate-700">
                                     <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center shrink-0 overflow-hidden border border-slate-200 dark:border-slate-600">{user.avatar ? <img src={user.avatar} className="w-full h-full object-cover" /> : <User size={20} className="text-slate-400" />}</div>
                                     <div className="flex-1 min-w-0"><span className="block font-bold text-slate-700 dark:text-slate-200 text-sm truncate">{user.nickname}</span><span className="text-[10px] text-slate-400 uppercase font-black">Nível {calculateUserLevel(user, pizzas, socialData, pizzaOwners).level}</span></div>
-                                    <Trash2 size={16} className="text-red-400 group-hover:text-red-600 opacity-0 group-hover:opacity-100 transition-all" />
+                                    <RefreshCcw size={16} className="text-red-400 group-hover:text-red-600 opacity-0 group-hover:opacity-100 transition-all" />
                                 </button>
                             ))}
                         </div>
@@ -201,7 +213,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                     <div className={`h-32 relative overflow-hidden group ${!formData.cover ? (isAdmin ? 'bg-gradient-to-br from-slate-700 via-slate-800 to-black' : 'bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500') : ''}`}>
                         {formData.cover ? <img src={formData.cover} className="w-full h-full object-cover" alt="Cover" /> : <div className="absolute top-0 left-0 w-full h-full opacity-20" style={{ backgroundImage: 'radial-gradient(circle, #fff 10%, transparent 10%)', backgroundSize: '20px 20px' }}></div>}
                         {isEditing && <button onClick={() => coverInputRef.current?.click()} className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white gap-1 z-20"><ImageIcon size={24} /><span className="text-[10px] font-black uppercase tracking-widest">Alterar Capa</span></button>}
-                        {isAdmin && <div className="absolute top-4 left-6 flex items-center gap-3 z-10"><div className="text-white/30"><ShieldCheck size={48} /></div><button onClick={() => setShowResetList(true)} className="bg-red-600 hover:bg-red-700 text-white text-[9px] font-black uppercase px-3 py-1 rounded-full shadow-lg transition-all active:scale-90 border border-red-400/30">APAGAR</button></div>}
+                        {isAdmin && <div className="absolute top-4 left-6 flex items-center gap-3 z-10"><div className="text-white/30"><ShieldCheck size={48} /></div><button onClick={() => setShowResetList(true)} className="bg-red-600 hover:bg-red-700 text-white text-[9px] font-black uppercase px-3 py-1 rounded-full shadow-lg transition-all active:scale-90 border border-red-400/30 whitespace-nowrap">ZERAR EXPERIÊNCIA</button></div>}
                         <input type="file" ref={coverInputRef} className="hidden" accept="image/*" onChange={(e) => handleFileChange(e, 'cover')} />
                     </div>
 
@@ -248,7 +260,6 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                             </div>
                             <div className="w-full h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mb-2 shadow-inner"><div className="h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 transition-all duration-1000 ease-out" style={{ width: `${stats.currentBarProgress}%` }}></div></div>
                             <span className="text-sm font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest bg-indigo-50 dark:bg-indigo-900/30 px-3 py-1 rounded-full border border-indigo-100 dark:border-indigo-800">{getLevelTitle(stats.level)}</span>
-                            {renderLevelArrows(stats.level)}
                         </div>
 
                         {isEditing ? <div className="flex gap-3"><button onClick={() => setIsEditing(false)} className="flex-1 py-4 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold rounded-xl">Cancelar</button><button onClick={handleSaveProfile} disabled={isLoading} className="flex-1 py-4 bg-indigo-600 text-white font-bold rounded-xl flex items-center justify-center gap-2">{isLoading ? <Loader2 size={20} className="animate-spin" /> : <Save size={20} />} Salvar</button></div> : <button onClick={() => setIsEditing(true)} className="w-full py-4 bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-bold rounded-xl shadow-lg transition-transform active:scale-95">Editar Perfil</button>}

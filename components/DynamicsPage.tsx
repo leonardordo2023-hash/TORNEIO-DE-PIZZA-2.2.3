@@ -1,7 +1,8 @@
 
-import React from 'react';
-import { Gamepad2, Star, Heart, Zap, Gift, Trophy, Bell, MessageCircle, Sparkles } from 'lucide-react';
+import React, { useState } from 'react';
+import { Gamepad2, Star, Heart, Zap, Gift, Trophy, Bell, MessageCircle, Sparkles, HelpCircle } from 'lucide-react';
 import { Language, translations } from '../services/translations';
+import { GamificationSimulation } from './GamificationSimulation';
 
 interface DynamicsPageProps {
     language: Language;
@@ -11,15 +12,25 @@ interface DynamicsPageProps {
 
 export const DynamicsPage: React.FC<DynamicsPageProps> = ({ language, isAdmin, onAlertAdmin }) => {
     const t = translations[language].gamification;
+    const [showHelp, setShowHelp] = useState(false);
 
     return (
         <div className="max-w-3xl mx-auto space-y-8 pb-10 animate-in fade-in duration-500 px-4">
+            <GamificationSimulation isOpen={showHelp} onClose={() => setShowHelp(false)} />
             
             <div className="text-center mt-6">
                 <div className="inline-block p-4 rounded-full bg-indigo-600 shadow-lg shadow-indigo-300 dark:shadow-indigo-900/50 mb-4 animate-bounce-slow">
                     <Gamepad2 size={48} className="text-white" />
                 </div>
-                <h2 className="text-3xl font-black text-slate-900 dark:text-white uppercase tracking-tight">{t.title}</h2>
+                <h2 className="text-3xl font-black text-slate-900 dark:text-white uppercase tracking-tight flex items-center justify-center gap-3">
+                    {t.title}
+                    <button 
+                        onClick={() => setShowHelp(true)}
+                        className="bg-white dark:bg-slate-800 text-indigo-600 rounded-full p-1.5 shadow-md border border-indigo-100 dark:border-indigo-900 hover:scale-110 active:scale-95 transition-all"
+                    >
+                        <span className="font-black text-xs px-1">?</span>
+                    </button>
+                </h2>
                 <p className="text-slate-500 dark:text-slate-400 font-medium">{t.subtitle}</p>
                 
                 {isAdmin && (

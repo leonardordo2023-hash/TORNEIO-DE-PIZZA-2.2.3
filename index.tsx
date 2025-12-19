@@ -6,13 +6,17 @@ import * as serviceWorkerRegistration from './serviceWorkerRegistration';
 
 // Aggressively prevent non-critical errors from crashing the app
 const ignoreNetworkErrors = (error: any) => {
-    const message = error?.message || error?.toString() || '';
+    if (!error) return false;
+    const message = error?.message || error?.reason?.message || error?.toString() || '';
     const lowerMsg = message.toLowerCase();
     
     return lowerMsg.includes('connack') || 
            lowerMsg.includes('timeout') || 
+           lowerMsg.includes('keepalive') || 
            lowerMsg.includes('mqtt') || 
            lowerMsg.includes('offline') ||
+           lowerMsg.includes('failed to fetch') ||
+           lowerMsg.includes('load failed') ||
            lowerMsg.includes('client is disconnecting') ||
            lowerMsg.includes('closed') ||
            lowerMsg.includes('connection refused') ||
@@ -24,12 +28,12 @@ const ignoreNetworkErrors = (error: any) => {
            lowerMsg.includes('ns_error_dom_media_metadata_err') ||
            lowerMsg.includes('circular structure') ||
            lowerMsg.includes('json.stringify') ||
-           lowerMsg.includes('fiber');
+           lowerMsg.includes('fiber') ||
+           lowerMsg.includes('heartbeat');
 };
 
 window.addEventListener('unhandledrejection', (event) => {
-  const reason = event.reason;
-  if (ignoreNetworkErrors(reason)) {
+  if (ignoreNetworkErrors(event.reason)) {
     event.preventDefault();
     event.stopImmediatePropagation();
   }
@@ -70,7 +74,7 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
         (this as any).setState({ hasError: false, error: null });
         return;
     }
-    console.error("Uncaught error:", error, errorInfo);
+    console.warn("Recoverable network or P2P error suppressed:", error);
   }
 
   public render() {

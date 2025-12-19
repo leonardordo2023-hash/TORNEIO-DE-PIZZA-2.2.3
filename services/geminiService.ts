@@ -1,51 +1,59 @@
-import { GoogleGenAI, Type } from "@google/genai";
-import { PizzaData, getAverage } from "../types";
 
-export const getJudgeAnalysis = async (pizzas: PizzaData[]): Promise<string> => {
-  // Check for API key in environment variables
-  if (!process.env.API_KEY) {
-    return "A chave da API está ausente. Por favor, configure seu ambiente.";
-  }
+import { GoogleGenAI, Modality } from "@google/genai";
 
-  // Initialize Gemini Client using process.env.API_KEY directly as per guidelines
+export const generateNarration = async (text: string): Promise<string | undefined> => {
+  // GUIDELINE: Always use process.env.API_KEY directly in the GoogleGenAI initialization.
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-  // Calculate averages for the AI
-  const summarizedPizzas = pizzas.map(p => ({
-    id: p.id,
-    beautyScore: getAverage(p.beautyScores),
-    tasteScore: getAverage(p.tasteScores)
-  })).filter(p => p.beautyScore > 0 || p.tasteScore > 0);
-
-  if (summarizedPizzas.length === 0) {
-    return "Nenhuma pizza foi avaliada ainda. Comece a provar para obter uma análise!";
-  }
-
-  const prompt = `
-    Você é um juiz culinário espirituoso e profissional em uma competição de pizza.
-    Aqui estão os dados atuais de pontuação MÉDIA dos juízes (escala de 0-10 para Beleza e Sabor):
-    ${JSON.stringify(summarizedPizzas, null, 2)}
-
-    Por favor, forneça um comentário breve e envolvente (máx. 150 palavras) sobre a classificação atual. 
-    Destaque o líder, quaisquer discrepâncias interessantes entre aparência e sabor (por exemplo, "feia mas deliciosa") e incentive os juízes.
-    Responda em PORTUGUÊS.
-    Formate a resposta como uma string markdown simples.
-  `;
-
   try {
-    // Fix: Updated model to 'gemini-3-flash-preview' as it is the recommended model for basic text tasks.
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: prompt,
+      model: "gemini-2.5-flash-preview-tts",
+      contents: [{ parts: [{ text: `Diga de forma muito empolgada e dramática como um locutor de TV: ${text}` }] }],
       config: {
-        temperature: 0.7,
-        systemInstruction: "Você é um crítico gastronômico carismático como Gordon Ramsay, mas mais simpático.",
+        responseModalities: [Modality.AUDIO],
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: { voiceName: 'Puck' },
+          },
+        },
       },
     });
 
-    return response.text || "Não foi possível gerar a análise.";
+    // GUIDELINE: The response object features a text property, 
+    // and inlineData is accessed via parts as standard GenerateContentResponse.
+    return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
   } catch (error) {
-    console.error("Gemini API Error:", error);
-    return "O juiz está em um intervalo para o café (Erro de API). Por favor, tente novamente mais tarde.";
+    console.error("TTS Error:", error);
+    return undefined;
   }
 };
+
+// Funções auxiliares para decodificação de áudio PCM (Guidelines)
+export function decodeBase64Audio(base64: string) {
+  const binaryString = atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+}
+
+export async function decodeAudioData(
+  data: Uint8Array,
+  ctx: AudioContext,
+  sampleRate: number,
+  numChannels: number,
+): Promise<AudioBuffer> {
+  const dataInt16 = new Int16Array(data.buffer);
+  const frameCount = dataInt16.length / numChannels;
+  const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
+
+  for (let channel = 0; channel < numChannels; channel++) {
+    const channelData = buffer.getChannelData(channel);
+    for (let i = 0; i < frameCount; i++) {
+      channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
+    }
+  }
+  return buffer;
+}

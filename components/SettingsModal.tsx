@@ -1,6 +1,5 @@
-
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Globe, Settings as SettingsIcon, Loader2, Download, Upload, Database, ChevronRight, ArrowLeft, Palette, Sun, Moon, Check, HardDrive, Smartphone, Zap, History, Save, Trash2, RotateCcw, Droplet, Star, Sparkles, Leaf, Cloud, CloudOff, AlertCircle, Copy, RefreshCw } from 'lucide-react';
+import { X, Globe, Settings as SettingsIcon, Loader2, Download, Upload, Database, ChevronRight, ArrowLeft, Palette, Sun, Moon, Check, HardDrive, Smartphone, Zap, History, Save, Trash2, RotateCcw, Droplet, Star, Sparkles, Leaf, Cloud, CloudOff, AlertCircle, Copy, RefreshCw, Bell } from 'lucide-react';
 import { UserAccount, PizzaData, SocialData } from '../types';
 import { Language, translations } from '../services/translations';
 import { databaseService } from '../services/databaseService';
@@ -37,6 +36,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const [isCreatingSnapshot, setIsCreatingSnapshot] = useState(false);
     const [isSyncing, setIsSyncing] = useState(false);
     const [cloudStatus, setCloudStatus] = useState(databaseService.getCloudStatus());
+    const [notifPermission, setNotifPermission] = useState<NotificationPermission>("default");
 
     const isAdmin = currentUser?.nickname.toLowerCase() === '@leonardo';
 
@@ -46,6 +46,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             checkStorage();
             loadSnapshots();
             setCloudStatus(databaseService.getCloudStatus());
+            if ("Notification" in window) setNotifPermission(Notification.permission);
         }
     }, [isOpen]);
 
@@ -59,10 +60,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         setSnapshots(list.sort((a, b) => b.timestamp - a.timestamp));
     };
 
+    const handleRequestNotifs = async () => {
+        if (!("Notification" in window)) {
+            alert("Este navegador não suporta notificações.");
+            return;
+        }
+        const res = await Notification.requestPermission();
+        setNotifPermission(res);
+        if (res === "granted") {
+            new Notification("Notificações Ativadas!", { body: "Você receberá avisos sobre o torneio aqui.", icon: './logo.png' });
+        }
+    };
+
     const handleForceSync = async () => {
         setIsSyncing(true);
         try {
-            // Prioridade total para a nuvem no botão de restaurar
             const cloudPizzas = await databaseService.getFromCloud('pizzas');
             const cloudSocial = await databaseService.getFromCloud('social_data');
             
@@ -83,6 +95,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     if (!isOpen) return null;
 
     const SQL_SCRIPT = `
+-- 1. Criar tabelas fundamentais
 CREATE TABLE IF NOT EXISTS public.app_state (
   key TEXT PRIMARY KEY,
   data JSONB NOT NULL,
@@ -96,14 +109,25 @@ CREATE TABLE IF NOT EXISTS public.users (
   isVerified BOOLEAN DEFAULT true,
   avatar TEXT,
   cover TEXT,
+  "xpOffset" FLOAT8 DEFAULT 0,
+  "pointsOffset" FLOAT8 DEFAULT 0,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
 
-ALTER PUBLICATION supabase_realtime ADD TABLE app_state;`.trim();
+-- 2. Habilitar Realtime
+ALTER PUBLICATION supabase_realtime ADD TABLE app_state;
+
+-- 3. Habilitar RLS e criar políticas para permitir acesso anônimo total (Correção de Auth Erros)
+ALTER TABLE public.app_state ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Acesso total anonimo app_state" ON public.app_state FOR ALL TO anon USING (true) WITH CHECK (true);
+
+ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Acesso total anonimo users" ON public.users FOR ALL TO anon USING (true) WITH CHECK (true);
+`.trim();
 
     const handleCopySQL = () => {
         navigator.clipboard.writeText(SQL_SCRIPT);
-        alert("Script SQL copiado!");
+        alert("Script SQL copiado! Cole no SQL Editor do Supabase.");
     };
 
     const handleCreateSnapshot = async () => {
@@ -161,8 +185,15 @@ ALTER PUBLICATION supabase_realtime ADD TABLE app_state;`.trim();
                 <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
                     {activeView === 'menu' && (
                         <div className="space-y-3">
-                            {isAdmin && !cloudStatus.isReady && (
-                                <MenuItem icon={AlertCircle} label="Configurar Supabase" subLabel="Tabelas não encontradas" onClick={() => setActiveView('cloud_status')} danger={true} />
+                            <MenuItem 
+                                icon={Bell} 
+                                label="Notificações no Celular" 
+                                subLabel={notifPermission === "granted" ? "Ativadas ✅" : "Clique para Ativar 🔔"} 
+                                onClick={handleRequestNotifs} 
+                                highlight={notifPermission !== "granted"} 
+                            />
+                            {isAdmin && (
+                                <MenuItem icon={AlertCircle} label="Configurar Supabase" subLabel="Atualizar Script SQL" onClick={() => setActiveView('cloud_status')} danger={!cloudStatus.isReady} highlight={!cloudStatus.isReady} />
                             )}
                             {isAdmin && (
                                 <MenuItem icon={RefreshCw} label="Restaurar da Nuvem" subLabel={isSyncing ? "Restaurando..." : "Forçar download total da nuvem"} onClick={handleForceSync} highlight={true} />
@@ -178,13 +209,13 @@ ALTER PUBLICATION supabase_realtime ADD TABLE app_state;`.trim();
                     {activeView === 'cloud_status' && isAdmin && (
                         <div className="space-y-4 animate-in slide-in-from-right duration-300">
                             <div className="p-4 bg-orange-100 dark:bg-orange-900/30 rounded-2xl border border-orange-200 dark:border-orange-800">
-                                <h3 className="text-sm font-black text-orange-700 dark:text-orange-300 uppercase mb-2">Por que este erro?</h3>
-                                <p className="text-xs text-orange-600 dark:text-orange-400 leading-relaxed">O Supabase requer que você crie as tabelas manualmente no <b>SQL Editor</b> do painel deles.</p>
+                                <h3 className="text-sm font-black text-orange-700 dark:text-orange-300 uppercase mb-2">Correção de Permissão</h3>
+                                <p className="text-xs text-orange-600 dark:text-orange-400 leading-relaxed">Se estiver recebendo erros de "Not Authorized", você precisa rodar este novo script que habilita o **RLS** para o acesso anônimo.</p>
                             </div>
                             <div className="space-y-2">
                                 <h4 className="text-[10px] font-black uppercase text-slate-400 ml-1">Script para o SQL Editor</h4>
                                 <div className="bg-slate-900 p-3 rounded-xl border border-slate-700 relative group">
-                                    <pre className="text-[8px] text-green-400 overflow-x-auto font-mono max-h-40">{SQL_SCRIPT}</pre>
+                                    <pre className="text-[8px] text-green-400 overflow-x-auto font-mono max-h-60">{SQL_SCRIPT}</pre>
                                     <button onClick={handleCopySQL} className="absolute top-2 right-2 p-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-all"><Copy size={14} /></button>
                                 </div>
                             </div>

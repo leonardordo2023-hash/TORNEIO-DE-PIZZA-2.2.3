@@ -73,11 +73,13 @@ export interface AnalysisResponse {
 
 export interface UserAccount {
     nickname: string;
-    phone: string; // Changed from email to phone
+    phone: string; 
     password: string; // 4 digits
     isVerified: boolean;
     avatar?: string; // Base64 image
     cover?: string; // Base64 image for profile background
+    xpOffset?: number; // Offset para reset de nível (XP a ser subtraído)
+    pointsOffset?: number; // Offset para reset de pontos (Pontos a serem subtraídos)
 }
 
 export enum SortOption {
@@ -102,4 +104,28 @@ export const getSum = (scores: Record<string, number> | undefined): number => {
   const values = Object.values(scores);
   if (values.length === 0) return 0;
   return values.reduce((a, b) => a + b, 0);
+};
+
+// Fix: Export getConfirmedSum to resolve module error in Charts.tsx
+export const getConfirmedSum = (pizza: PizzaData, category: 'salgada' | 'doce'): number => {
+    let beautyScores, tasteScores, bonusScores;
+    if (category === 'salgada') {
+        beautyScores = pizza.beautyScores;
+        tasteScores = pizza.tasteScores;
+        bonusScores = pizza.bonusScores || {};
+    } else {
+        beautyScores = pizza.beautyScoresDoce || {};
+        tasteScores = pizza.tasteScoresDoce || {};
+        bonusScores = pizza.bonusScoresDoce || {};
+    }
+    const confirmedVotes = pizza.confirmedVotes || {};
+    let sum = 0;
+    Object.keys(beautyScores).forEach(userId => {
+        if (confirmedVotes[userId]) {
+            sum += (beautyScores[userId] || 0);
+            sum += (tasteScores[userId] || 0);
+            sum += (bonusScores[userId] || 0);
+        }
+    });
+    return sum;
 };

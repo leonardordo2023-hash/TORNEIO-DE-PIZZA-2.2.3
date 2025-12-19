@@ -7,7 +7,7 @@ const USERS_KEY = 'pizza_users_db';
 const CURRENT_USER_KEY = 'pizza_current_user';
 
 const REQUIRED_NAMES = [
-    "@Adry", "@Ana Julia", "@Angelica", "@Elisa", "@Gecilda", 
+    "@Adry", "@Ana Júlia", "@Angelica", "@Elisa", "@Gecilda", 
     "@Marta", "@Neiva", "@Rebecca", "@Simone", "@Vania", "@Vanusa", "@Yulimar"
 ];
 
@@ -23,14 +23,16 @@ export const authService = {
                     phone: '',
                     password: '0000',
                     isVerified: true,
-                    avatar: `https://ui-avatars.com/api/?name=${name.replace('@', '')}&background=random&color=fff`
+                    avatar: `https://ui-avatars.com/api/?name=${name.replace('@', '')}&background=random&color=fff`,
+                    xpOffset: 0,
+                    pointsOffset: 0
                 });
                 changed = true;
             }
         });
 
         if (changed) {
-            localStorage.setItem(USERS_KEY, JSON.stringify(securityService.deepClean(updated)));
+            securityService.safeSetItem(USERS_KEY, JSON.stringify(securityService.deepClean(updated)));
         }
         return updated;
     },
@@ -46,7 +48,7 @@ export const authService = {
             if (data) {
                 const cleanData = securityService.deepClean(data);
                 const completeData = authService.ensureRequiredProfiles(cleanData);
-                localStorage.setItem(USERS_KEY, JSON.stringify(completeData));
+                securityService.safeSetItem(USERS_KEY, JSON.stringify(completeData));
                 return completeData;
             }
         } catch (e: any) {
@@ -72,11 +74,12 @@ export const authService = {
                     password: user.password,
                     isVerified: user.isVerified,
                     avatar: user.avatar || '',
-                    cover: user.cover || ''
+                    cover: user.cover || '',
+                    xpOffset: user.xpOffset || 0,
+                    pointsOffset: user.pointsOffset || 0
                 }, { onConflict: 'nickname' });
 
             if (error) {
-                // Captura a mensagem de erro específica do Supabase em vez do objeto
                 const errorMsg = error.message || JSON.stringify(error);
                 throw new Error(errorMsg);
             }
@@ -84,11 +87,10 @@ export const authService = {
             const users = authService.getUsers();
             if (!users.some(u => u.nickname.toLowerCase() === user.nickname.toLowerCase())) {
                 users.push(user);
-                localStorage.setItem(USERS_KEY, JSON.stringify(securityService.deepClean(users)));
+                securityService.safeSetItem(USERS_KEY, JSON.stringify(securityService.deepClean(users)));
             }
         } catch (e: any) {
             console.error("Error registering user in Supabase", e);
-            // Garante que o erro retornado seja uma string para o UI
             throw new Error(e.message || "Erro de conexão com o banco de dados.");
         }
     },
@@ -103,7 +105,7 @@ export const authService = {
             if (error) throw new Error(error.message);
             
             const users = authService.getUsers().filter(u => u.nickname !== nickname);
-            localStorage.setItem(USERS_KEY, JSON.stringify(securityService.deepClean(users)));
+            securityService.safeSetItem(USERS_KEY, JSON.stringify(securityService.deepClean(users)));
         } catch (e: any) {
             console.error("Error deleting user", e);
             throw new Error(e.message || "Não foi possível excluir o perfil.");
@@ -130,8 +132,8 @@ export const authService = {
         }
 
         users[userIndex] = updatedUser;
-        localStorage.setItem(USERS_KEY, JSON.stringify(securityService.deepClean(users)));
-        localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(securityService.deepClean(updatedUser)));
+        securityService.safeSetItem(USERS_KEY, JSON.stringify(securityService.deepClean(users)));
+        securityService.safeSetItem(CURRENT_USER_KEY, JSON.stringify(securityService.deepClean(updatedUser)));
         
         return updatedUser;
     },
@@ -147,11 +149,11 @@ export const authService = {
             }
         });
         const complete = authService.ensureRequiredProfiles(users);
-        localStorage.setItem(USERS_KEY, JSON.stringify(securityService.deepClean(complete)));
+        securityService.safeSetItem(USERS_KEY, JSON.stringify(securityService.deepClean(complete)));
     },
 
     saveUser: (user: UserAccount) => {
-        localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(securityService.deepClean(user)));
+        securityService.safeSetItem(CURRENT_USER_KEY, JSON.stringify(securityService.deepClean(user)));
     },
 
     logout: () => {

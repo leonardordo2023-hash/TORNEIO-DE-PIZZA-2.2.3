@@ -14,7 +14,7 @@ export const calculateUserLevel = (
     socialData: SocialData, 
     pizzaOwners: Record<number, string>
 ) => {
-    if (!currentUser) return { level: 1, currentBarProgress: 0, totalPoints: 0, likesGiven: 0, commentsGiven: 0, rawProgress: 0 };
+    if (!currentUser) return { level: 1, currentBarProgress: 0, totalPoints: 0, likesGiven: 0, commentsGiven: 0, rawProgress: 0, totalDisplayPointsRaw: 0 };
 
     const cleanNick = currentUser.nickname.replace('@', '').trim();
     
@@ -75,10 +75,10 @@ export const calculateUserLevel = (
     
     const rawProgress = pizzaProgressPercent + bonusReceivedProgressPercent + bonusGivenProgressPercent + socialProgressPercent;
     
-    // Aplica offsets (Reset Hard)
-    const offsetKey = `pizza_xp_offset_${cleanNick}`;
-    const xpOffset = parseFloat(localStorage.getItem(offsetKey) || '0');
-    let totalProgressPercent = Math.max(0, rawProgress - xpOffset);
+    // XP Offset para Nível - Força reset absoluto se os valores coincidirem
+    const xpOffset = (typeof currentUser.xpOffset === 'number') ? currentUser.xpOffset : 0;
+    let totalProgressPercent = rawProgress - xpOffset;
+    if (totalProgressPercent < 0.01) totalProgressPercent = 0;
 
     // Nível (Max 5)
     let level = Math.floor(totalProgressPercent / 100) + 1;
@@ -87,14 +87,19 @@ export const calculateUserLevel = (
     let currentBarProgress = totalProgressPercent % 100;
     if (level === 5) currentBarProgress = 100;
 
-    const totalDisplayPoints = currentRegularPoints + currentReceivedBonusPoints + bonusesGivenCount + likesGivenCount + commentsGivenCount;
+    // Pontos Offset para Total Exibido - Força reset absoluto
+    const totalDisplayPointsRaw = currentRegularPoints + currentReceivedBonusPoints + bonusesGivenCount + likesGivenCount + commentsGivenCount;
+    const pointsOffset = (typeof currentUser.pointsOffset === 'number') ? currentUser.pointsOffset : 0;
+    let totalPoints = totalDisplayPointsRaw - pointsOffset;
+    if (totalPoints < 0.01) totalPoints = 0;
 
     return { 
         level, 
         currentBarProgress, 
-        totalPoints: Math.max(0, totalDisplayPoints - (xpOffset / 10)), // Aproximação visual de pontos
+        totalPoints, 
         likesGiven: likesGivenCount,
         commentsGiven: commentsGivenCount,
-        rawProgress // Retornamos o bruto para facilitar o reset
+        rawProgress,
+        totalDisplayPointsRaw
     };
 };

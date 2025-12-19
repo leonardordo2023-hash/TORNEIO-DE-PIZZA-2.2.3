@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState } from 'react';
-import { ChevronUp, Zap, Crown, ArrowRight, RotateCw } from 'lucide-react';
+import { Zap, Crown, ArrowRight, RotateCw } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 interface LevelUpModalProps {
@@ -88,45 +88,6 @@ export const LevelUpModal: React.FC<LevelUpModalProps> = ({ newLevel, onClose, n
     const oldTitle = getLevelTitle(newLevel - 1);
     const newTitle = getLevelTitle(newLevel);
 
-    const renderLevelIcons = () => {
-        if (isMaxLevel) {
-            return <Crown size={48} className="text-yellow-200 drop-shadow-md" />;
-        }
-
-        const arrowCount = newLevel || 1;
-        const icons = Array.from({ length: arrowCount });
-        
-        let gridClass = "flex items-center justify-center";
-        let iconSize = 48;
-
-        if (arrowCount === 1) {
-            iconSize = 48;
-        } else if (arrowCount === 2) {
-            gridClass = "flex gap-1";
-            iconSize = 32;
-        } else if (arrowCount === 3) {
-            gridClass = "grid grid-cols-2 gap-0.5 justify-items-center items-center"; 
-            iconSize = 22;
-        } else {
-            gridClass = "grid grid-cols-2 gap-1";
-            iconSize = 20;
-        }
-
-        return (
-            <div className={`${gridClass} transition-all`}>
-                {icons.map((_, index) => (
-                    <ChevronUp 
-                        key={index} 
-                        size={iconSize} 
-                        className={`text-slate-700 dark:text-slate-400 drop-shadow-md animate-pulse ${arrowCount === 3 && index === 2 ? 'col-span-2' : ''}`}
-                        style={{ animationDelay: `${index * 150}ms` }}
-                        strokeWidth={4}
-                    />
-                ))}
-            </div>
-        );
-    };
-
     return (
         <div 
             className={`fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm transition-opacity duration-500 ${isExiting ? 'opacity-0' : 'opacity-100 animate-in fade-in'}`}
@@ -144,7 +105,11 @@ export const LevelUpModal: React.FC<LevelUpModalProps> = ({ newLevel, onClose, n
                     <div className="relative mb-6">
                         <div className="absolute inset-0 bg-orange-500 blur-2xl opacity-40 animate-pulse"></div>
                         <div className="w-24 h-24 rounded-full bg-gradient-to-br from-orange-500 to-red-700 flex items-center justify-center shadow-lg ring-4 ring-orange-500/30 animate-bounce-slow">
-                            {renderLevelIcons()}
+                            {isMaxLevel ? (
+                                <Crown size={48} className="text-yellow-200 drop-shadow-md" />
+                            ) : (
+                                <span className="text-5xl font-black text-white drop-shadow-lg">{newLevel}</span>
+                            )}
                         </div>
                         <div className="absolute -top-2 -right-2 bg-white text-indigo-900 p-1.5 rounded-full shadow-lg animate-ping">
                             <Zap size={16} fill="currentColor" />

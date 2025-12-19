@@ -4,7 +4,7 @@ import { joinRoom } from 'trystero/mqtt';
 import { PizzaData, MediaItem, SocialData, Comment, Reply, UserAccount } from '../types';
 import { securityService } from './securityService';
 
-const ROOM_ID = 'pizzagrade-realtime-universe-v11';
+const ROOM_ID = 'pizzagrade-universe-v12-final';
 
 let room: any = null;
 let heartbeatInterval: any = null; 
@@ -172,6 +172,7 @@ export interface SyncCallbacks {
   onCommentReactionUpdate: (payload: CommentReactionPayload) => void;
   onReplyAdd: (payload: ReplyPayload) => void;
   onReplyReactionUpdate: (payload: ReplyReactionPayload) => void;
+  onReplyToCommentAction?: (mediaId: string, commentId: string, text: string) => void;
   onPollVoteUpdate: (payload: PollVotePayload) => void;
   onAppNotification: (payload: AppNotificationPayload) => void;
   onResetUserXP?: (payload: ResetXPPayload) => void;
@@ -187,11 +188,19 @@ export const initializeP2P = ({
     onReplyAdd, onReplyReactionUpdate, onPollVoteUpdate, onAppNotification, onResetUserXP, onUserUpdate, onPresence,
     getCurrentState 
 }: SyncCallbacks) => {
-  const config = { appId: 'pizzagrade-app-live-v10' };
+  const config = { appId: 'pizzagrade-live-app-v11' };
   
   if (room) try { if(room.leave) room.leave(); room = null; } catch (e) {}
+  if (heartbeatInterval) clearInterval(heartbeatInterval);
 
-  try { room = joinRoom(config, ROOM_ID); } catch (error) { return null; }
+  try { 
+      room = joinRoom(config, ROOM_ID); 
+  } catch (error) { 
+      console.warn("Room join failed, P2P will be inactive:", error);
+      return null; 
+  }
+
+  if (!room || !room.makeAction) return null;
 
   const [sendVote, getVote] = room.makeAction('vote');
   const [sendConfirm, getConfirm] = room.makeAction('voteConfirm');
@@ -268,6 +277,7 @@ export const initializeP2P = ({
   getReplyReaction(onReplyReactionUpdate);
   getPollVote(onPollVoteUpdate);
   getAppNotification(onAppNotification);
+  // Ensure we use the correct variable onResetUserXP from destructuring at line 162
   if (onResetUserXP) getResetXP(onResetUserXP);
   if (onUserUpdate) getUserUpdate(onUserUpdate);
   if (onPresence) getPresence(onPresence);
@@ -292,7 +302,7 @@ export const initializeP2P = ({
 
   heartbeatInterval = setInterval(() => {
       try { if (sendHeartbeat) sendHeartbeat(Date.now()); } catch (e) {}
-  }, 5000);
+  }, 10000);
 
   setTimeout(() => { updatePeerCount(); if (requestSync) requestSync(null); }, 300);
 
