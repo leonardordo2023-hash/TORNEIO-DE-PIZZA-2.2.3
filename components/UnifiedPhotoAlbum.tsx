@@ -2,7 +2,7 @@
 import React, { useRef, useState, useMemo, useCallback } from 'react';
 import { PizzaData, MediaItem, MediaCategory, SocialData, UserAccount, Comment, Reply } from '../types';
 import { processMediaFile } from '../services/imageService';
-import { Camera, Image as ImageIcon, Loader2, Trash2, Download, Video, Trophy, Users, Pizza, Heart, Send, User, X, Pencil, Check, MessageCircle, Type, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, LayoutGrid, Grip, Filter, ArrowUp, ArrowDown, Film, Plus, ShieldCheck, Clock, Bell, Sparkles } from 'lucide-react';
+import { Camera, Image as ImageIcon, Loader2, Trash2, Download, Video, Trophy, Users, Pizza, Heart, Send, User, X, Pencil, Check, MessageCircle, Type, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, LayoutGrid, Grip, Filter, ArrowUp, ArrowDown, Film, Plus, ShieldCheck, Clock, Bell, Sparkles, Maximize2, ExternalLink } from 'lucide-react';
 import JSZip from 'jszip';
 import { Language, translations } from '../services/translations';
 
@@ -61,6 +61,7 @@ export const UnifiedPhotoAlbum: React.FC<UnifiedPhotoAlbumProps> = ({
 
   // Modal State
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [zoomedMedia, setZoomedMedia] = useState<MediaItem | null>(null);
   const [uploadCaption, setUploadCaption] = useState('');
   const [stagedFiles, setStagedFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<{url: string, type: string}[]>([]);
@@ -130,16 +131,48 @@ export const UnifiedPhotoAlbum: React.FC<UnifiedPhotoAlbumProps> = ({
     setIsZipping(true);
     try {
         const zip = new JSZip();
-        allMedia.forEach((item, index) => { 
-          const base64Data = item.url.split(',')[1]; 
-          if (base64Data) zip.file(`torneio-${activeCategory}-${index + 1}.jpg`, base64Data, { base64: true }); 
+        
+        // Use fetch to handle both Base64 Data URIs and Remote URLs correctly
+        const promises = allMedia.map(async (item, index) => {
+            try {
+                const response = await fetch(item.url);
+                const blob = await response.blob();
+                const ext = item.type === 'video' ? 'mp4' : 'jpg';
+                zip.file(`torneio-${activeCategory}-${index + 1}.${ext}`, blob);
+            } catch (err) {
+                console.error("Erro ao processar imagem para zip:", err);
+            }
         });
+
+        await Promise.all(promises);
+
         const content = await zip.generateAsync({ type: "blob" });
         const link = document.createElement('a');
         link.href = URL.createObjectURL(content);
         link.download = `album-${activeCategory}.zip`;
+        document.body.appendChild(link);
         link.click();
-    } catch (error) { alert("Erro ZIP."); } finally { setIsZipping(false); }
+        document.body.removeChild(link);
+    } catch (error) { 
+        alert("Erro ao criar arquivo ZIP."); 
+    } finally { 
+        setIsZipping(false); 
+    }
+  };
+
+  const handleDownloadSingle = async (item: MediaItem) => {
+      try {
+          const response = await fetch(item.url);
+          const blob = await response.blob();
+          const link = document.createElement('a');
+          link.href = URL.createObjectURL(blob);
+          link.download = `pizza-${item.category}-${item.date}.${item.type === 'video' ? 'mp4' : 'jpg'}`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+      } catch (e) {
+          alert("Erro ao baixar imagem.");
+      }
   };
 
   return (
@@ -170,11 +203,11 @@ export const UnifiedPhotoAlbum: React.FC<UnifiedPhotoAlbumProps> = ({
                   ))}
               </div>
               <div className="flex gap-2">
-                 <button onClick={handleDownloadAll} disabled={isZipping} className="flex-1 flex items-center justify-center gap-2 py-3 bg-slate-100 dark:bg-slate-800 rounded-xl text-[9px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-300">
+                 <button onClick={handleDownloadAll} disabled={isZipping || allMedia.length === 0} className="flex-1 flex items-center justify-center gap-2 py-3 bg-slate-100 dark:bg-slate-800 rounded-xl text-[9px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all active:scale-95 disabled:opacity-50">
                     {isZipping ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} Baixar Tudo
                  </button>
                  {isAdmin && (
-                    <button onClick={onAlertAdmin} className="flex-1 flex items-center justify-center gap-2 py-3 bg-indigo-50 dark:bg-indigo-900/40 rounded-xl text-[9px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400">
+                    <button onClick={onAlertAdmin} className="flex-1 flex items-center justify-center gap-2 py-3 bg-indigo-50 dark:bg-indigo-900/40 rounded-xl text-[9px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition-all active:scale-95">
                        <Bell size={12} /> Notificar
                     </button>
                  )}
@@ -220,8 +253,16 @@ export const UnifiedPhotoAlbum: React.FC<UnifiedPhotoAlbumProps> = ({
                           ) : (
                               item.caption && <p className="text-slate-800 dark:text-slate-100 font-bold mb-4 text-[15px] leading-tight tracking-tight whitespace-pre-wrap">{item.caption}</p>
                           )}
-                          <div className="rounded-[2rem] overflow-hidden bg-black shadow-inner border-0">
-                              <img src={item.url} className={`w-full object-contain transition-transform duration-700 hover:scale-105 ${isMaxScale ? '' : 'max-h-[400px]'}`} loading="lazy" />
+                          <div 
+                            className="rounded-[2rem] overflow-hidden bg-black shadow-inner border-0 relative cursor-pointer group/img"
+                            onClick={() => setZoomedMedia(item)}
+                          >
+                              <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/10 transition-colors z-10 flex items-center justify-center opacity-0 group-hover/img:opacity-100">
+                                <div className="bg-white/20 backdrop-blur-md p-3 rounded-full text-white">
+                                    <Maximize2 size={24} />
+                                </div>
+                              </div>
+                              <img src={item.url} className={`w-full object-contain transition-transform duration-700 group-hover/img:scale-105 ${isMaxScale ? '' : 'max-h-[400px]'}`} loading="lazy" />
                           </div>
                       </div>
                       <div className="px-6 py-3 bg-slate-50 dark:bg-slate-800/60 border-t border-transparent flex items-center justify-between">
@@ -327,6 +368,57 @@ export const UnifiedPhotoAlbum: React.FC<UnifiedPhotoAlbumProps> = ({
               ))
           )}
       </div>
+
+      {/* Floating Zoom / Lightbox */}
+      {zoomedMedia && (
+          <div className="fixed inset-0 z-[800] bg-black/95 backdrop-blur-md flex flex-col items-center justify-center animate-in fade-in duration-300">
+              {/* Controls Header */}
+              <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-center z-[810] bg-gradient-to-b from-black/60 to-transparent">
+                  <div className="flex items-center gap-3">
+                      <span className="text-white font-bold text-xs uppercase tracking-widest bg-white/20 px-3 py-1 rounded-full">{zoomedMedia.category}</span>
+                      <span className="text-white/60 text-xs font-mono">{getRelativeTime(zoomedMedia.date)}</span>
+                  </div>
+                  <button 
+                    onClick={() => setZoomedMedia(null)} 
+                    className="p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-all transform hover:scale-110"
+                  >
+                      <X size={24} />
+                  </button>
+              </div>
+
+              {/* Main Content */}
+              <div className="flex-1 w-full h-full flex items-center justify-center p-4 relative" onClick={() => setZoomedMedia(null)}>
+                  {zoomedMedia.type === 'video' ? (
+                      <video 
+                        src={zoomedMedia.url} 
+                        controls 
+                        autoPlay 
+                        className="max-w-full max-h-[80vh] rounded-lg shadow-2xl animate-in zoom-in-95 duration-300"
+                        onClick={(e) => e.stopPropagation()} 
+                      />
+                  ) : (
+                      <img 
+                        src={zoomedMedia.url} 
+                        className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl animate-in zoom-in-95 duration-300 select-none" 
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                  )}
+              </div>
+
+              {/* Download Button Footer */}
+              <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-[810]">
+                  <button 
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        handleDownloadSingle(zoomedMedia);
+                    }}
+                    className="flex items-center gap-3 bg-white text-black px-8 py-4 rounded-full font-black text-sm uppercase tracking-widest shadow-2xl hover:scale-105 active:scale-95 transition-all group"
+                  >
+                      <Download size={20} className="group-hover:animate-bounce" /> Baixar Imagem
+                  </button>
+              </div>
+          </div>
+      )}
 
       {isUploadModalOpen && (
         <div className="fixed inset-0 z-[400] glass bg-slate-950/80 flex items-center justify-center p-4 animate-in fade-in duration-300">
