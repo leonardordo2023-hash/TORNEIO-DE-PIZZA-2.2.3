@@ -1,4 +1,3 @@
-
 import React, { useRef, useState, useMemo, useCallback } from 'react';
 import { PizzaData, MediaItem, MediaCategory, SocialData, UserAccount, Comment, Reply } from '../types';
 import { processMediaFile } from '../services/imageService';
@@ -132,15 +131,22 @@ export const UnifiedPhotoAlbum: React.FC<UnifiedPhotoAlbumProps> = ({
     try {
         const zip = new JSZip();
         
-        // Use fetch to handle both Base64 Data URIs and Remote URLs correctly
         const promises = allMedia.map(async (item, index) => {
+            const ext = item.type === 'video' ? 'mp4' : 'jpg';
+            const filename = `torneio-${activeCategory}-${index + 1}.${ext}`;
+            
             try {
-                const response = await fetch(item.url);
-                const blob = await response.blob();
-                const ext = item.type === 'video' ? 'mp4' : 'jpg';
-                zip.file(`torneio-${activeCategory}-${index + 1}.${ext}`, blob);
+                if (item.url.startsWith('data:')) {
+                    // Extract base64 part
+                    const base64Data = item.url.split(',')[1];
+                    zip.file(filename, base64Data, { base64: true });
+                } else {
+                    const response = await fetch(item.url);
+                    const blob = await response.blob();
+                    zip.file(filename, blob);
+                }
             } catch (err) {
-                console.error("Erro ao processar imagem para zip:", err);
+                console.error("Erro ao adicionar arquivo ao ZIP:", err);
             }
         });
 
@@ -162,14 +168,26 @@ export const UnifiedPhotoAlbum: React.FC<UnifiedPhotoAlbumProps> = ({
 
   const handleDownloadSingle = async (item: MediaItem) => {
       try {
-          const response = await fetch(item.url);
-          const blob = await response.blob();
-          const link = document.createElement('a');
-          link.href = URL.createObjectURL(blob);
-          link.download = `pizza-${item.category}-${item.date}.${item.type === 'video' ? 'mp4' : 'jpg'}`;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
+          const ext = item.type === 'video' ? 'mp4' : 'jpg';
+          const filename = `pizza-${item.category}-${item.date}.${ext}`;
+          
+          if (item.url.startsWith('data:')) {
+              const link = document.createElement('a');
+              link.href = item.url;
+              link.download = filename;
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+          } else {
+              const response = await fetch(item.url);
+              const blob = await response.blob();
+              const link = document.createElement('a');
+              link.href = URL.createObjectURL(blob);
+              link.download = filename;
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+          }
       } catch (e) {
           alert("Erro ao baixar imagem.");
       }
