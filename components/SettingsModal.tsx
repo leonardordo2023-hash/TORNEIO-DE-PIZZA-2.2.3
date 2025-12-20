@@ -39,7 +39,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const [cloudStatus, setCloudStatus] = useState(databaseService.getCloudStatus());
     const [notifPermission, setNotifPermission] = useState<NotificationPermission>("default");
 
-    const isAdmin = currentUser?.nickname.toLowerCase() === '@leonardo';
+    // ADMIN REAL: Apenas @programação
+    const isAdmin = currentUser?.nickname.toLowerCase() === '@programação';
 
     useEffect(() => {
         if (isOpen) {

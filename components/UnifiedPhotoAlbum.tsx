@@ -19,11 +19,14 @@ interface UnifiedPhotoAlbumProps {
   onCommentReact: (mediaId: string, commentId: string, emoji: string) => void;
   onReplyToComment: (mediaId: string, commentId: string, text: string) => void;
   onReplyReact: (mediaId: string, commentId: string, replyId: string, emoji: string) => void;
+  onReplyEdit?: (mediaId: string, commentId: string, replyId: string, newText: string) => void;
+  onReplyDelete?: (mediaId: string, commentId: string, replyId: string) => void;
   onUpdateCaption: (id: number | string, mediaId: string, caption: string) => void;
   language: Language;
   currentUser: UserAccount;
   onAlertAdmin?: () => void;
   uiScale?: number;
+  canPost?: boolean;
 }
 
 const getRelativeTime = (timestamp: number | undefined) => {
@@ -39,11 +42,12 @@ const getRelativeTime = (timestamp: number | undefined) => {
 export const UnifiedPhotoAlbum: React.FC<UnifiedPhotoAlbumProps> = ({ 
     pizzas, userId, onAddMedia, onDeleteMedia, 
     socialData, onAddComment, onEditComment, onDeleteComment, onReact, onCommentReact, onUpdateCaption, language, currentUser, onAlertAdmin,
-    onReplyToComment, onReplyReact,
-    uiScale = 1
+    onReplyToComment, onReplyReact, onReplyEdit, onReplyDelete,
+    uiScale = 1, canPost = false
 }) => {
   const t = translations[language];
-  const isAdmin = userId.toLowerCase() === '@leonardo';
+  const isAdmin = userId.toLowerCase() === '@programação';
+  
   const isMaxScale = uiScale >= 1.3;
 
   const [isUploading, setIsUploading] = useState(false);
@@ -66,6 +70,8 @@ export const UnifiedPhotoAlbum: React.FC<UnifiedPhotoAlbumProps> = ({
   const [editCaptionValue, setEditCaptionValue] = useState('');
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editCommentText, setEditCommentText] = useState('');
+  const [editingReplyId, setEditingReplyId] = useState<{commentId: string, replyId: string} | null>(null);
+  const [editReplyText, setEditReplyText] = useState('');
 
   const allMedia = useMemo(() => {
     return pizzas.flatMap(p => (p.media || [])
@@ -75,7 +81,6 @@ export const UnifiedPhotoAlbum: React.FC<UnifiedPhotoAlbumProps> = ({
      .sort((a, b) => b.date - a.date);
   }, [pizzas, activeCategory]);
 
-  // Fix: Explicitly type 'files' as File[] to avoid 'unknown' inference causing type errors in map callback
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files: File[] = Array.from(e.target.files || []);
     if (files.length === 0) return;
@@ -151,7 +156,7 @@ export const UnifiedPhotoAlbum: React.FC<UnifiedPhotoAlbumProps> = ({
                         <span className="text-[10px] font-black text-indigo-500 uppercase tracking-widest mt-1 block">{allMedia.length} Itens Salvos</span>
                     </div>
                 </div>
-                {isAdmin && (
+                {canPost && (
                   <button onClick={() => setIsUploadModalOpen(true)} className="w-10 h-10 bg-indigo-600 text-white rounded-2xl flex items-center justify-center shadow-xl active:scale-90 transition-all">
                     <Plus size={20} strokeWidth={3} />
                   </button>
@@ -270,15 +275,31 @@ export const UnifiedPhotoAlbum: React.FC<UnifiedPhotoAlbumProps> = ({
                                                     <div className="ml-6 space-y-2 border-l-2 border-slate-100 dark:border-slate-800 pl-3">
                                                         {c.replies.map(r => {
                                                             const hasLikedReply = r.reactions?.[currentUser.nickname] === '❤️';
+                                                            const isReplyAuthor = r.user === currentUser.nickname;
+                                                            const canModifyReply = isReplyAuthor || isAdmin;
                                                             return (
-                                                                <div key={r.id} className="bg-slate-50/50 dark:bg-slate-800/20 p-2 rounded-xl flex flex-col gap-1">
+                                                                <div key={r.id} className="bg-slate-50/50 dark:bg-slate-800/20 p-2 rounded-xl flex flex-col gap-1 relative group/reply">
                                                                     <div className="flex justify-between items-center">
                                                                         <div className="flex items-center gap-2">
                                                                             <span className="font-black text-[8px] uppercase text-indigo-400">{r.user}</span>
                                                                             <button onClick={() => onReplyReact(item.id, c.id, r.id, '❤️')} className={`p-1 transition-all ${hasLikedReply ? 'text-red-500 scale-110' : 'text-slate-300 hover:text-red-400'}`}><Heart size={8} fill={hasLikedReply ? "currentColor" : "none"} /></button>
+                                                                            {Object.keys(r.reactions || {}).length > 0 && <span className="text-[7px] font-black text-slate-400">{Object.keys(r.reactions || {}).length}</span>}
                                                                         </div>
+                                                                        {canModifyReply && (
+                                                                            <div className="flex gap-2 opacity-0 group-hover/reply:opacity-100 transition-opacity">
+                                                                                <button onClick={() => { setEditingReplyId({commentId: c.id, replyId: r.id}); setEditReplyText(r.text); }} className="text-slate-400 hover:text-indigo-600"><Pencil size={10}/></button>
+                                                                                <button onClick={() => confirm("Apagar resposta?") && onReplyDelete?.(item.id, c.id, r.id)} className="text-slate-400 hover:text-red-600"><Trash2 size={10}/></button>
+                                                                            </div>
+                                                                        )}
                                                                     </div>
-                                                                    <p className="text-[10px] font-bold text-slate-600 dark:text-slate-400 leading-tight">{r.text}</p>
+                                                                    {editingReplyId?.replyId === r.id ? (
+                                                                        <div className="space-y-1 mt-1">
+                                                                            <input className="w-full bg-white dark:bg-slate-800 p-1.5 rounded-lg text-[10px] font-bold outline-none border border-indigo-400" value={editReplyText} onChange={(e) => setEditReplyText(e.target.value)} autoFocus />
+                                                                            <div className="flex gap-2"><button onClick={() => setEditingReplyId(null)} className="text-[7px] font-black text-slate-400">CANCELAR</button><button onClick={() => { onReplyEdit?.(item.id, c.id, r.id, editReplyText); setEditingReplyId(null); }} className="text-[7px] font-black text-indigo-600">SALVAR</button></div>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <p className="text-[10px] font-bold text-slate-600 dark:text-slate-400 leading-tight">{r.text}</p>
+                                                                    )}
                                                                 </div>
                                                             );
                                                         })}

@@ -71,7 +71,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess, language, se
                 await authService.deleteUser(nickname);
                 await refreshUserList();
             } catch (err: any) {
-                alert("Error: " + err.message);
+                alert("Erro: " + err.message);
             }
         }
     };
@@ -92,7 +92,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess, language, se
         
         if (adminPassword === '0000') {
             const admin: UserAccount = { 
-                nickname: '@Leonardo', 
+                nickname: '@Programação', 
                 phone: '', 
                 password: '0000', 
                 isVerified: true, 
@@ -107,15 +107,16 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess, language, se
         }
     };
 
-    // Função para normalizar texto (remover acentos) para busca mais precisa
     const normalize = (text: string) => text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
     const filteredPlayers = storedUsers
         .filter(u => {
             const nick = u.nickname.toLowerCase();
-            const isAdmin = nick === '@leonardo';
+            // Apenas o Admin principal é oculto da lista de jogadores.
+            // @Leonardo é um jurado com permissão de postar, então ele aparece na lista.
+            const isHiddenAdmin = nick === '@programação';
             const matchesSearch = normalize(u.nickname).includes(normalize(searchTerm));
-            return !isAdmin && matchesSearch;
+            return !isHiddenAdmin && matchesSearch;
         })
         .sort((a, b) => a.nickname.localeCompare(b.nickname, 'pt', { sensitivity: 'base' }));
 

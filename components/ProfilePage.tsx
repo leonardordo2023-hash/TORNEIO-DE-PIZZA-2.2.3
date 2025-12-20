@@ -41,7 +41,8 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
     const fileInputRef = useRef<HTMLInputElement>(null);
     const coverInputRef = useRef<HTMLInputElement>(null);
 
-    const isAdmin = currentUser.nickname === '@Leonardo';
+    // ADMIN REAL: Apenas @programação
+    const isAdmin = currentUser.nickname.toLowerCase() === '@programação';
 
     useEffect(() => {
         setFormData({
@@ -134,7 +135,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
         if (confirm("ATENÇÃO ADMIN: Esta ação resetará TODOS OS JOGADORES para o Nível 1 com 0 pontos. Deseja prosseguir?")) {
             setIsLoading(true);
             try {
-                const allPlayers = authService.getUsers().filter(u => u.nickname !== '@Leonardo');
+                const allPlayers = authService.getUsers().filter(u => u.nickname.toLowerCase() !== '@programação');
                 await Promise.all(allPlayers.map(async (player) => {
                     const stats = calculateUserLevel(player, pizzas, socialData, pizzaOwners);
                     const updated = await authService.updateUser(player.nickname, { 
@@ -151,7 +152,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
         }
     };
 
-    const allUsers = authService.getUsers().filter(u => u.nickname !== '@Leonardo');
+    const allUsers = authService.getUsers().filter(u => u.nickname.toLowerCase() !== '@programação');
     const filteredUsers = allUsers.filter(u => u.nickname.toLowerCase().includes(resetSearch.toLowerCase()));
 
     return (
@@ -163,7 +164,6 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                 <div className="absolute bottom-[-10%] right-[-10%] w-[60vw] h-[60vw] bg-purple-500/20 rounded-full blur-[90px] animate-float-delayed dark:bg-purple-900/20"></div>
             </div>
 
-            {/* Botão de Voltar Fixo para não sumir no scroll */}
             <div className="sticky top-0 w-full max-w-md px-4 sm:px-6 pt-4 sm:pt-6 z-50 flex justify-start pointer-events-none">
                 <button onClick={onClose} className="p-2 sm:p-3 bg-white/80 dark:bg-slate-800/80 backdrop-blur-md rounded-full text-slate-700 dark:text-slate-200 shadow-lg hover:scale-110 transition-transform pointer-events-auto"><ArrowLeft size={20} className="sm:w-6 sm:h-6" /></button>
             </div>
@@ -213,8 +213,8 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
             )}
 
             <div className="w-full max-w-md p-4 sm:p-6 relative z-10 flex flex-col min-h-full justify-center py-6 sm:py-10 landscape:py-4">
-                <div className="relative overflow-hidden rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl landscape:scale-[0.85] landscape:origin-top transition-transform">
-                    <div className={`h-24 sm:h-32 landscape:h-20 relative overflow-hidden group ${!formData.cover ? (isAdmin ? 'bg-gradient-to-br from-slate-700 via-slate-800 to-black' : 'bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500') : ''}`}>
+                <div className="relative overflow-hidden rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl landscape:scale-[0.75] landscape:origin-top transition-transform">
+                    <div className={`h-24 sm:h-32 landscape:h-16 relative overflow-hidden group ${!formData.cover ? (isAdmin ? 'bg-gradient-to-br from-slate-700 via-slate-800 to-black' : 'bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500') : ''}`}>
                         {formData.cover ? <img src={formData.cover} className="w-full h-full object-cover" alt="Cover" /> : <div className="absolute top-0 left-0 w-full h-full opacity-20" style={{ backgroundImage: 'radial-gradient(circle, #fff 10%, transparent 10%)', backgroundSize: '20px 20px' }}></div>}
                         {isEditing && <button onClick={() => coverInputRef.current?.click()} className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white gap-1 z-20"><ImageIcon size={24} /><span className="text-[10px] font-black uppercase tracking-widest text-center">Alterar Capa</span></button>}
                         {isAdmin && <div className="absolute top-4 left-6 flex items-center gap-3 z-10 landscape:top-2"><div className="text-white/30"><ShieldCheck size={48} className="landscape:w-8 landscape:h-8" /></div><button onClick={() => setShowResetList(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white text-[8px] sm:text-[9px] font-black uppercase px-3 sm:px-4 py-1.5 rounded-full shadow-lg transition-all active:scale-90 border border-indigo-400/30 whitespace-nowrap tracking-widest">GERENCIAR PONTOS</button></div>}
@@ -222,24 +222,24 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                     </div>
 
                     <div className="px-4 sm:px-8 pb-4 sm:pb-8 relative">
-                        <div className="relative -mt-10 sm:-mt-16 mb-2 sm:mb-4 inline-block group landscape:-mt-12">
-                            <div className={`w-24 h-24 sm:w-32 sm:h-32 landscape:w-20 landscape:h-20 rounded-full border-4 border-white dark:border-slate-900 bg-white dark:bg-slate-800 flex items-center justify-center overflow-hidden shadow-xl relative z-10 transition-transform ${isEditing ? 'cursor-pointer' : ''}`} onClick={() => isEditing && fileInputRef.current?.click()}>
+                        <div className="relative -mt-10 sm:-mt-16 mb-2 sm:mb-4 inline-block group landscape:-mt-8">
+                            <div className={`w-24 h-24 sm:w-32 sm:h-32 landscape:w-16 landscape:h-16 rounded-full border-4 border-white dark:border-slate-900 bg-white dark:bg-slate-800 flex items-center justify-center overflow-hidden shadow-xl relative z-10 transition-transform ${isEditing ? 'cursor-pointer' : ''}`} onClick={() => isEditing && fileInputRef.current?.click()}>
                                 {formData.avatar ? <img src={formData.avatar} alt="Avatar" className="w-full h-full object-cover" /> : <div className="w-full h-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-slate-400"><User className="w-12 h-12 sm:w-16 sm:h-16 landscape:w-8 landscape:h-8" /></div>}
                                 {isEditing && <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer z-20"><Camera className="text-white" size={24} /></div>}
                             </div>
                             <button onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }} className={`absolute bottom-1 left-0 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 p-1 rounded-full border-2 border-white dark:border-slate-900 z-30 shadow-sm transition-colors ${!isEditing && 'hidden'}`}><Camera size={12} /></button>
-                            <div className="absolute bottom-1 sm:bottom-2 right-1 sm:right-2 bg-yellow-400 text-yellow-900 text-[10px] sm:text-xs font-black px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full border-2 border-white dark:border-slate-900 z-20 shadow-sm flex items-center gap-1 pointer-events-none"><Zap size={8} fill="currentColor" /> {stats.level}</div>
+                            <div className="absolute bottom-1 sm:bottom-2 right-1 sm:right-2 bg-yellow-400 text-yellow-900 text-[10px] sm:text-xs font-black px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full border-2 border-white dark:border-slate-900 z-20 shadow-sm flex items-center gap-1 pointer-events-none landscape:right-0 landscape:bottom-0"><Zap size={8} fill="currentColor" /> {stats.level}</div>
                             <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={(e) => handleFileChange(e, 'avatar')} />
                         </div>
 
-                        <div className="text-center mb-4 sm:mb-6 landscape:mb-2">
-                            {isEditing ? <div className="mb-2 sm:mb-4"><input type="text" value={formData.nickname} onChange={(e) => setFormData({...formData, nickname: e.target.value})} className="w-full text-center text-xl sm:text-2xl font-black bg-slate-100 dark:bg-slate-800 border-none rounded-xl p-1.5 sm:p-2 dark:text-white focus:ring-2 focus:ring-indigo-500" placeholder="@SeuApelido" disabled={isAdmin} /></div> : <div className="flex items-center justify-center gap-2 mb-0.5 sm:mb-1">{isAdmin ? <h1 className="text-xl sm:text-3xl font-black text-slate-900 dark:text-white flex items-center gap-2">@ADMINISTRADOR <ShieldCheck className="text-blue-600 fill-blue-100 dark:fill-blue-900/50" size={20} /></h1> : <h1 className="text-xl sm:text-3xl font-black text-slate-900 dark:text-white">{currentUser.nickname}</h1>}</div>}
-                            <p className={`text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 ${isAdmin ? 'text-blue-600 dark:text-blue-400' : 'text-slate-500 dark:text-slate-400'}`}>{isAdmin ? 'Administrador' : 'Jurados'}</p>
+                        <div className="text-center mb-4 sm:mb-6 landscape:mb-1">
+                            {isEditing ? <div className="mb-2 sm:mb-4"><input type="text" value={formData.nickname} onChange={(e) => setFormData({...formData, nickname: e.target.value})} className="w-full text-center text-xl sm:text-2xl font-black bg-slate-100 dark:bg-slate-800 border-none rounded-xl p-1.5 sm:p-2 dark:text-white focus:ring-2 focus:ring-indigo-500" placeholder="@SeuApelido" disabled={isAdmin} /></div> : <div className="flex items-center justify-center gap-2 mb-0.5 sm:mb-1">{isAdmin ? <h1 className="text-xl sm:text-3xl font-black text-slate-900 dark:text-white flex items-center gap-2">ADMIN <ShieldCheck className="text-blue-600 fill-blue-100 dark:fill-blue-900/50" size={20} /></h1> : <h1 className="text-xl sm:text-3xl font-black text-slate-900 dark:text-white">{currentUser.nickname}</h1>}</div>}
+                            <p className={`text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 ${isAdmin ? 'text-blue-600 dark:text-blue-400' : 'text-slate-500 dark:text-slate-400'}`}>{isAdmin ? 'Administrador' : 'Jurado'}</p>
                             {error && <p className="text-red-500 text-[10px] font-bold mt-1 animate-pulse">{error}</p>}
                             {success && <p className="text-green-500 text-[10px] font-bold mt-1 flex items-center justify-center gap-1"><Check size={10}/> {success}</p>}
                         </div>
 
-                        <div className="grid grid-cols-3 gap-2 mb-4 sm:mb-6 landscape:mb-2">
+                        <div className="grid grid-cols-3 gap-2 mb-4 sm:mb-6 landscape:mb-1">
                             <div className="bg-slate-50 dark:bg-slate-800/50 p-1.5 sm:p-2.5 rounded-2xl border border-slate-100 dark:border-slate-800 flex flex-col items-center justify-center text-center">
                                 <span className="text-xl sm:text-2xl font-black text-indigo-600 dark:text-indigo-400 leading-none mb-0.5 sm:mb-1">{stats.totalPoints.toFixed(1)}</span>
                                 <span className="text-[7px] sm:text-[9px] font-black text-slate-400 uppercase tracking-tight">Pontos</span>
@@ -254,7 +254,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                             </div>
                         </div>
 
-                        <div className="mb-4 sm:mb-6 text-center landscape:mb-3">
+                        <div className="mb-4 sm:mb-6 text-center landscape:mb-2">
                             <div className="flex justify-between text-[10px] sm:text-xs font-bold text-slate-400 mb-1.5 sm:mb-2 items-center">
                                 <span className="flex items-center gap-1.5">
                                     {stats.level === 5 ? 'Nível Máximo LENDÁRIO' : `Nível ${stats.level}`}

@@ -7,16 +7,17 @@ const USERS_KEY = 'pizza_users_db';
 const DELETED_USERS_KEY = 'pizza_deleted_users_db';
 const CURRENT_USER_KEY = 'pizza_current_user';
 
-const REQUIRED_NAMES = [
-    "@Adry", "@Ana Júlia", "@Angelica", "@Elisa", "@Gecilda", 
-    "@Marta", "@Neiva", "@Rebecca", "@Simone", "@Vania", "@Vanusa", "@Yulimar"
-];
+// Lista esvaziada conforme solicitado: apenas novos perfis manuais serão aceitos
+const REQUIRED_NAMES: string[] = [];
 
 export const authService = {
     ensureRequiredProfiles: (currentUsers: UserAccount[]): UserAccount[] => {
         let updated = [...currentUsers];
         let changed = false;
 
+        // Filtra para garantir que apenas o admin ou usuários válidos permaneçam
+        // Se desejar limpar tudo mesmo, pode-se resetar aqui, mas manteremos o que for manual
+        
         REQUIRED_NAMES.forEach(name => {
             if (!updated.some(u => u.nickname.toLowerCase() === name.toLowerCase())) {
                 updated.push({
@@ -74,27 +75,48 @@ export const authService = {
 
     registerUser: async (user: UserAccount): Promise<void> => {
         try {
+            const payload = {
+                nickname: user.nickname,
+                phone: user.phone || '',
+                password: user.password || '0000',
+                avatar: user.avatar || '',
+                cover: user.cover || ''
+            };
+
+            // Estratégia resiliente para evitar erro de ON CONFLICT:
+            // Tenta inserir. Se falhar por duplicidade ou falta de constraint, tenta atualizar.
             const { error } = await supabase
                 .from('users')
-                .upsert({
-                    nickname: user.nickname,
-                    phone: user.phone,
-                    password: user.password,
-                    avatar: user.avatar || '',
-                    cover: user.cover || ''
-                });
+                .upsert(payload);
 
             if (error) {
-                throw new Error(error.message || JSON.stringify(error));
+                // Fallback caso a tabela não tenha PK/Unique constraint definida para nickname
+                const { error: updateError } = await supabase
+                    .from('users')
+                    .update(payload)
+                    .eq('nickname', user.nickname);
+                
+                if (updateError) {
+                    const { error: insertError } = await supabase
+                        .from('users')
+                        .insert(payload);
+                    if (insertError) throw insertError;
+                }
             }
 
+            // Atualiza a lista local lendo a versão mais recente do localStorage antes de salvar
+            // Isso evita que registros múltiplos feitos em loop sobrescrevam uns aos outros
             const users = authService.getUsers();
-            if (!users.some(u => u.nickname.toLowerCase() === user.nickname.toLowerCase())) {
+            const existingIdx = users.findIndex(u => u.nickname.toLowerCase() === user.nickname.toLowerCase());
+            
+            if (existingIdx >= 0) {
+                users[existingIdx] = { ...users[existingIdx], ...user };
+            } else {
                 users.push(user);
-                securityService.safeSetItem(USERS_KEY, JSON.stringify(securityService.deepClean(users)));
             }
             
-            // Remove from trash if it was there
+            securityService.safeSetItem(USERS_KEY, JSON.stringify(securityService.deepClean(users)));
+            
             const deleted = authService.getDeletedUsers().filter(u => u.nickname.toLowerCase() !== user.nickname.toLowerCase());
             securityService.safeSetItem(DELETED_USERS_KEY, JSON.stringify(securityService.deepClean(deleted)));
             

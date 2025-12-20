@@ -32,7 +32,6 @@ export const translations = {
     guest: "Convidado",
     settings: "Configurações",
     profile: "Perfil",
-    playerLevels: "Nível dos Jurados",
     language: "Idioma",
     appearance: "Aparência",
     theme: "Tema",
@@ -183,7 +182,7 @@ export const translations = {
             icon: "camera"
         },
         {
-            title: "Comentarios",
+            title: "Comentários",
             desc: "💬 <b>Justifique Notas Extremas:</b> Se der <b>abaixo de 5</b> ou <b>acima de 9</b>, conte o <b>porquê</b>! Use as <b>anotações</b> ou <b>comentários globais</b>. Sua opinião é o tempero extra! 🌶️",
             icon: "message"
         },
@@ -229,7 +228,6 @@ export const translations = {
     guest: "Invitado",
     settings: "Configuración",
     profile: "Perfil",
-    playerLevels: "Nivel de Jueces",
     language: "Idioma",
     appearance: "Apariencia",
     theme: "Tema",
@@ -297,7 +295,7 @@ export const translations = {
     rankingPanel: {
         grandFinal: "Gran Final",
         simultaneous: "Escrutinio Simultáneo: Salada & Dulce",
-        startBroadcast: "INICIAR TRANSMISSÃO",
+        startBroadcast: "INICIAR TRANSMISIÓN",
         processing: "Procesando",
         panelTitle: "Panel de Escrutinio",
         salgadaTitle: "Ranking Salada",
@@ -342,7 +340,7 @@ export const translations = {
             },
             {
                 title: "La Evolución",
-                text: "En cada edición, el nivel subió. Masas de fermentação natural, salsas secretas y combinaciones audaces. El 'Torneo de Pizza' pasó de ser solo comida a ser el arte de crear experiencias."
+                text: "En cada edición, el nivel subió. Masas de fermentación natural, salsas secretas y combinaciones audaces. El 'Torneo de Pizza' pasó de ser solo comida a ser el arte de crear experiencias."
             },
             {
                 title: "El Legado",
@@ -426,7 +424,6 @@ export const translations = {
     guest: "Guest",
     settings: "Settings",
     profile: "Profile",
-    playerLevels: "Judge Levels",
     language: "Language",
     appearance: "Appearance",
     theme: "Theme",

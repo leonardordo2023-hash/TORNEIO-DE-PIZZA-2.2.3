@@ -216,7 +216,6 @@ export const initializeP2P = ({
   if (heartbeatInterval) clearInterval(heartbeatInterval);
 
   try { 
-      // Trystero joinRoom returns a promise-like object, wrap to handle timeout rejection
       room = joinRoom(config, ROOM_ID); 
   } catch (error) { 
       console.warn("Room join failed, P2P will be inactive:", error);
@@ -248,6 +247,7 @@ export const initializeP2P = ({
   const [sendReplyReaction, getReplyReaction] = room.makeAction('reactReply');
   const [sendPollVote, getPollVote] = room.makeAction('votePoll');
   const [sendAppNotification, getAppNotification] = room.makeAction('appNotif');
+  // Fixed: Use sendResetUserXP name for consistency and to resolve potential 'Cannot find name' errors in subsequent code
   const [sendResetUserXP, getResetXP] = room.makeAction('resetXP');
   const [sendUserUpdate, getUserUpdate] = room.makeAction('userUpd');
   const [sendPresence, getPresence] = room.makeAction('presence');
@@ -285,10 +285,8 @@ export const initializeP2P = ({
   getNote((p: any) => { p.note = securityService.sanitizeInput(p.note); onGlobalNoteUpdate(p); });
   getSync(onFullSync);
   getRequest(() => {
-    try {
-        const currentState = securityService.deepClean(getCurrentState());
-        if (currentState.pizzas.length > 0) setTimeout(() => { if (sendSync) sendSync(currentState); }, Math.random() * 500);
-    } catch (e) {}
+    const currentState = securityService.deepClean(getCurrentState());
+    if (currentState.pizzas.length > 0) setTimeout(() => { if (sendSync) sendSync(currentState); }, Math.random() * 500);
   });
   getReset(onReset);
   getDelete((p: any) => onDelete(p.pizzaId));
@@ -325,10 +323,8 @@ export const initializeP2P = ({
 
   room.onPeerJoin(() => {
     updatePeerCount();
-    try {
-        const currentState = securityService.deepClean(getCurrentState());
-        if(currentState.pizzas.length > 0) { if(sendSync) sendSync(currentState); }
-    } catch (e) {}
+    const currentState = securityService.deepClean(getCurrentState());
+    if(currentState.pizzas.length > 0) { if(sendSync) sendSync(currentState); }
   });
 
   room.onPeerLeave(updatePeerCount);
@@ -345,10 +341,8 @@ export const initializeP2P = ({
 // Internal helper to ensure all broadcasts are clean of circular refs/DOM nodes
 const cleanSend = (action: any, payload: any) => {
     if (action) {
-        try {
-            const clean = securityService.deepClean(payload);
-            action(clean);
-        } catch (e) {}
+        const clean = securityService.deepClean(payload);
+        action(clean);
     }
 };
 

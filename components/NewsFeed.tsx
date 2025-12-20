@@ -26,6 +26,7 @@ interface NewsFeedProps {
   currentUser: UserAccount;
   mode?: 'news' | 'avisos';
   uiScale?: number;
+  canPost?: boolean;
 }
 
 const getRelativeTime = (timestamp: number | undefined) => {
@@ -68,10 +69,11 @@ export const NewsFeed: React.FC<NewsFeedProps> = ({
     pizzas, userId, onAddPhoto, onDeletePhoto,
     socialData, onAddComment, onEditComment, onDeleteComment, onReact, onCommentReact, language, currentUser, onPollVote, onUpdateCaption,
     onReplyToComment, onEditReply, onDeleteReply, onReplyReact,
-    mode = 'news', uiScale = 1
+    mode = 'news', uiScale = 1, canPost = false
 }) => {
   const t = translations[language];
-  const isAdmin = userId.toLowerCase() === '@leonardo';
+  const isAdmin = userId.toLowerCase() === '@programação';
+  
   const isMaxScale = uiScale >= 1.3;
 
   const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
@@ -148,7 +150,6 @@ export const NewsFeed: React.FC<NewsFeedProps> = ({
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       const files: File[] = Array.from(e.target.files || []);
-      // Permitir até 10 fotos/vídeos
       const images = files.filter(f => f.type.startsWith('image/') || f.type.startsWith('video/')).slice(0, 10);
       const doc = files.find(f => !f.type.startsWith('image/') && !f.type.startsWith('video/'));
       if (images.length > 0) {
@@ -254,7 +255,7 @@ export const NewsFeed: React.FC<NewsFeedProps> = ({
             <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shadow-lg ${mode === 'news' ? 'bg-indigo-600' : 'bg-orange-500'} text-white rotate-2`}>{mode === 'news' ? <Newspaper size={20} /> : <Megaphone size={20} />}</div>
             <h2 className="text-2xl font-black uppercase tracking-tighter text-slate-800 dark:text-white leading-none">{mode === 'news' ? 'Feed Social' : 'Avisos News'}</h2>
         </div>
-        {isAdmin && <button onClick={() => setIsPostModalOpen(true)} className="w-10 h-10 bg-indigo-600 text-white rounded-2xl flex items-center justify-center shadow-xl active:scale-90 transition-all"><Plus size={20} strokeWidth={3} /></button>}
+        {canPost && <button onClick={() => setIsPostModalOpen(true)} className="w-10 h-10 bg-indigo-600 text-white rounded-2xl flex items-center justify-center shadow-xl active:scale-90 transition-all"><Plus size={20} strokeWidth={3} /></button>}
       </div>
 
       <div className="space-y-6">
@@ -271,7 +272,7 @@ export const NewsFeed: React.FC<NewsFeedProps> = ({
                       )}
                       <div className="p-4 flex items-center gap-3">
                           <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${item.type === 'poll' ? 'bg-orange-100 text-orange-600' : item.type === 'audio' ? 'bg-pink-100 text-pink-600' : item.type === 'file' ? 'bg-blue-100 text-blue-600' : 'bg-indigo-100 text-indigo-600'}`}>{item.type === 'poll' ? <ListFilter size={18} /> : item.type === 'audio' ? <Music size={18} /> : item.type === 'file' ? <FileText size={18} /> : <ShieldCheck size={18} />}</div>
-                          <div><span className="block font-black text-slate-800 dark:text-white text-[13px] uppercase tracking-tighter">{item.type === 'poll' ? 'Votação Aberta' : item.type === 'file' ? 'Arquivo Anexo' : 'Leonardo Admin'}</span><span className="text-[8px] font-black text-slate-400 uppercase flex items-center gap-1"><Clock size={8}/> {getRelativeTime(item.date)}</span></div>
+                          <div><span className="block font-black text-slate-800 dark:text-white text-[13px] uppercase tracking-tighter">{item.type === 'poll' ? 'Votação Aberta' : item.type === 'file' ? 'Arquivo Anexo' : 'Programação Admin'}</span><span className="text-[8px] font-black text-slate-400 uppercase flex items-center gap-1"><Clock size={8}/> {getRelativeTime(item.date)}</span></div>
                       </div>
                       <div className="px-5 pb-5">
                           {editingPostId === item.id ? (
